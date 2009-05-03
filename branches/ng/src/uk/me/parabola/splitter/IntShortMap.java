@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009 Steve Ratcliffe
+ * Copyright (C) 2009 Steve Ratcliffe
  * 
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 3
@@ -19,18 +19,18 @@ package uk.me.parabola.splitter;
 import java.util.Iterator;
 
 /**
- * Map using primative values to map from an int to another int.
+ * Map using primative values to map an int to a short.
  *
- * It doesn't fully behave the same way that a map would.
+ * It doesn't fully behave the same way that a map would and doesn't implement Map.
  *
  * @author Steve Ratcliffe
  */
-public class IntIntMap {
+public class IntShortMap {
 	private static final int INIT_SIZE = 1 << 16;
 
 	private int size;
 	private int[] keys;
-	private int[] values;
+	private short[] values;
 
 	private int capacity;
 
@@ -41,13 +41,13 @@ public class IntIntMap {
 
 	private static final int OFF = 7;
 
-	public IntIntMap() {
+	public IntShortMap() {
 		this(INIT_SIZE, 0.9f);
 	}
 
-	public IntIntMap(int initCap, float load) {
+	public IntShortMap(int initCap, float load) {
 		keys = new int[initCap];
-		values = new int[initCap];
+		values = new short[initCap];
 		capacity = initCap;
 
 		loadFactor = load;
@@ -68,7 +68,7 @@ public class IntIntMap {
 		return values[ind];
 	}
 
-	public int put(int key, int value) {
+	public int put(int key, short value) {
 		ensureSpace();
 
 		int ind = keyPos(key);
@@ -113,11 +113,11 @@ public class IntIntMap {
 			targetSize = (int) (ncap * loadFactor);
 
 			int[] okey = keys;
-			int[] oval = values;
+			short[] oval = values;
 
 			size = 0;
 			keys = new int[ncap];
-			values = new int[ncap];
+			values = new short[ncap];
 			capacity = ncap;
 			//hit= miss = 0;
 			for (int i = 0; i < okey.length; i++) {
@@ -154,13 +154,13 @@ public class IntIntMap {
 	}
 
 	/**
-     * An primative integer version of the Map.Entry class.
+     * An primative short version of the Map.Entry class.
 	 *
 	 * @author Steve Ratcliffe
 	 */
 	public static class Entry {
 		private int key;
-		private int value;
+		private short value;
 
 		public int getKey() {
 			return key;
@@ -174,7 +174,7 @@ public class IntIntMap {
 			return value;
 		}
 
-		void setValue(int value) {
+		void setValue(short value) {
 			this.value = value;
 		}
 	}
