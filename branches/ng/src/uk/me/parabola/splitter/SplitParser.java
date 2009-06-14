@@ -36,6 +36,8 @@ class SplitParser extends DefaultHandler {
 	private static final int MODE_WAY = 2;
 	private static final int MODE_RELATION = 3;
 
+	private static String last_desc = "";
+
 	private int mode;
 
 	private final SplitIntMap coords = new SplitIntMap();
@@ -232,7 +234,10 @@ class SplitParser extends DefaultHandler {
 			val <<= 8;
 		}
 		// it was not added
-		System.err.println(desc + " in too many areas.");
+		if (!last_desc.equals(desc)) {
+			System.err.println(desc + " in too many areas.");
+			last_desc = desc;
+		}
 		return set;
 	}
 
