@@ -19,7 +19,7 @@ package uk.me.parabola.splitter;
 import java.util.Iterator;
 
 /**
- * Map using primative values to map from an int to another int.
+ * Map using primitive values to map from an int to another int.
  *
  * It doesn't fully behave the same way that a map would.
  *

@@ -40,9 +40,4 @@ public class Utils {
 		else
 			return (int) ((l - DELTA) * (1 << 24)/360);
 	}
-	
-	public static double toRadians(int latitude) {
-		return toDegrees(latitude) * Math.PI / 180;
-	}
-
 }

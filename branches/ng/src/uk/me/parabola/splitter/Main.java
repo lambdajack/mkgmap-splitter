@@ -267,12 +267,22 @@ public class Main {
 			} catch (IOException e) {
 				throw new FileNotFoundException( "Could not read as gz compressed file");
 			}
-		}
-		if (name.endsWith(".bz2")) {
+		} else if (name.endsWith(".bz2")) {
+			int n;
 			try {
-				is.read(); is.read(); is = new CBZip2InputStream(is);
-			} catch (Exception e) {
-				throw new FileNotFoundException( "Could not read as bz2 compressed file");
+				n = is.read();
+				n += is.read();
+			} catch (IOException e) {
+				throw new FileNotFoundException("Failed to read header bytes");
+			}
+
+			if (n != 2)
+				throw new FileNotFoundException("File too small");
+
+			try {
+				is = new CBZip2InputStream(is);
+			} catch (IOException e) {
+				throw new FileNotFoundException("");
 			}
 		}
 		return is;

@@ -68,10 +68,6 @@ public class SplitIntMap {
 		return size;
 	}
 
-	private void fixSize() {
-		this.size = size();
-	}
-
 	/**
 	 * An iterate over the entry set of the map.  The same Entry object is returned
 	 * each time.
@@ -94,7 +90,7 @@ public class SplitIntMap {
 
 	/**
 	 * Trim the map down to its minimum size.  This can be used when we are not going to
-	 * add to the map any more to reduce the overhead of having serveral sub-maps.
+	 * add to the map any more to reduce the overhead of having several sub-maps.
 	 */
 	public void trim() {
 		for (int i = 0; i < NMAPS; i++) {
@@ -129,7 +125,7 @@ public class SplitIntMap {
 
 		/**
 		 * Note that you have to call this for the call to next() to be correct
-		 * and so it doesn' properly follow the contract for hasNext() on the
+		 * and so it doesn't properly follow the contract for hasNext() on the
 		 * regular Iterator.
 		 */
 		public boolean hasNext() {
@@ -156,6 +152,10 @@ public class SplitIntMap {
 
 		public void remove() {
 			throw new UnsupportedOperationException();
+		}
+
+		private void fixSize() {
+			size = size();
 		}
 	}
 }

@@ -26,6 +26,8 @@ import org.xml.sax.helpers.DefaultHandler;
  * First pass of the OSM file for the initial dividing up of the
  * areas.
  *
+ * We attempt to estimate the amount of
+ *
  * @author Steve Ratcliffe
  */
 class DivisionParser extends DefaultHandler {
@@ -76,7 +78,7 @@ class DivisionParser extends DefaultHandler {
 				double lon = Double.parseDouble(slon);
 				Coord co = new Coord(lat, lon);
 
-				// Since we are rounding areas to fit on a low zoom boundry we
+				// Since we are rounding areas to fit on a low zoom boundary we
 				// can drop the bottom 8 bits of the lat and lon and then fit
 				// the whole lot into a single int.
 				int glat = co.getLatitude();

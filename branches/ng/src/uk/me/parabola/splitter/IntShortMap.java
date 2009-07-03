@@ -19,7 +19,7 @@ package uk.me.parabola.splitter;
 import java.util.Iterator;
 
 /**
- * Map using primative values to map an int to a short.
+ * Map using primitive values to map an int to a short.
  *
  * It doesn't fully behave the same way that a map would and doesn't implement Map.
  *

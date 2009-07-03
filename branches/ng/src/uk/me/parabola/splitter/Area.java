@@ -30,7 +30,7 @@ public class Area {
 	private final int maxLong;
 
 	/**
-	 * Create an area from the given coordinates.  We ensure that no dimention
+	 * Create an area from the given coordinates.  We ensure that no dimension
 	 * is zero.
 	 *
 	 * @param minLat The western latitude.
