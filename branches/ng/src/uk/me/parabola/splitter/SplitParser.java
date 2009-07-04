@@ -40,7 +40,7 @@ class SplitParser extends DefaultHandler {
 
 	private int mode;
 
-	private final SplitIntMap coords = new SplitIntMap();
+	private final SplitIntCharMap coords = new SplitIntCharMap();
 	private final SplitIntMap ways = new SplitIntMap();
 
 	private final SubArea[] areas;
@@ -54,27 +54,14 @@ class SplitParser extends DefaultHandler {
 	private StringRelation currentRelation;
 	private int currentRelAreaSet;
 
+	private Stats stats = new Stats();
+
 	SplitParser(SubArea[] areas) {
 		this.areas = areas;
 	}
 
 	/**
-	 * Receive notification of the start of an element.
-	 *
-	 * @param uri The Namespace URI, or the empty string if the
-	 * element has no Namespace URI or if Namespace
-	 * processing is not being performed.
-	 * @param localName The local name (without prefix), or the
-	 * empty string if Namespace processing is not being
-	 * performed.
-	 * @param qName The qualified name (with prefix), or the
-	 * empty string if qualified names are not available.
-	 * @param attributes The attributes attached to the element.  If
-	 * there are no attributes, it shall be an empty
-	 * Attributes object.
-	 * @throws SAXException Any SAX exception, possibly
-	 * wrapping another exception.
-	 * @see ContentHandler#startElement
+	 * Called at the start of an element.
 	 */
 	public void startElement(String uri, String localName,
 			String qName, Attributes attributes)
@@ -277,8 +264,9 @@ class SplitParser extends DefaultHandler {
 	private void writeNode(StringNode node) throws IOException {
 		for (int n = 1; n <= areas.length; n++) {
 			SubArea a = areas[n-1];
-			boolean found = a.write(node);
-			if (found) {
+			if (a.contains(node.getLocation())) {
+				a.write(node);
+				addAreaForNode(a);
 				if (currentNodeAreaSet == n) {
 					// Do nothing, already in, the normal case
 				} else if (currentNodeAreaSet == 0) {
@@ -289,7 +277,11 @@ class SplitParser extends DefaultHandler {
 				}
 			}
 		}
-		coords.put(node.getId(), currentNodeAreaSet);
+		//coords.put(node.getId(), currentNodeAreaSet);
+	}
+
+	private void addAreaForNode(SubArea a) {
+		assert false;
 	}
 
 
@@ -297,5 +289,13 @@ class SplitParser extends DefaultHandler {
 		System.err.println("Error at line " + e.getLineNumber() + ", col "
 				+ e.getColumnNumber());
 		super.fatalError(e);
+	}
+
+	private static class Stats {
+		private int nNodes;
+		private int nWays;
+		private int nRelations;
+
+		private int nNodeOverlaps;
 	}
 }

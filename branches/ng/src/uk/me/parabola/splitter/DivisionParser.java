@@ -26,8 +26,6 @@ import org.xml.sax.helpers.DefaultHandler;
  * First pass of the OSM file for the initial dividing up of the
  * areas.
  *
- * We attempt to estimate the amount of
- *
  * @author Steve Ratcliffe
  */
 class DivisionParser extends DefaultHandler {
@@ -37,7 +35,9 @@ class DivisionParser extends DefaultHandler {
 
 	private static final int MODE_NODE = 1;
 
+	// This holds the coordinate vs the top 8 bits of the lat/long.
 	private SplitIntMap coords = new SplitIntMap();
+
 	private final MapDetails details = new MapDetails();
 
 	// Mixed nodes and ways in the file.

@@ -19,18 +19,18 @@ package uk.me.parabola.splitter;
 import java.util.Iterator;
 
 /**
- * Map using primitive values to map an int to a short.
+ * Map using primitive values to map an int to a 16 bit quantity.
  *
  * It doesn't fully behave the same way that a map would and doesn't implement Map.
  *
  * @author Steve Ratcliffe
  */
-public class IntShortMap {
+public class IntCharMap {
 	private static final int INIT_SIZE = 1 << 16;
 
 	private int size;
 	private int[] keys;
-	private short[] values;
+	private char[] values;
 
 	private int capacity;
 
@@ -41,13 +41,22 @@ public class IntShortMap {
 
 	private static final int OFF = 7;
 
-	public IntShortMap() {
+	/**
+	 * A map with standard initial size and load factor.
+	 */
+	public IntCharMap() {
 		this(INIT_SIZE, 0.9f);
 	}
 
-	public IntShortMap(int initCap, float load) {
+	/**
+	 * Create map with given initial capacity and load factor.
+	 * @param initCap The initial size of the map.
+	 * @param load The load factor as a number between 0 and 1.  When the map is more that
+	 * this fraction full it will be re-sized.
+	 */
+	public IntCharMap(int initCap, float load) {
 		keys = new int[initCap];
-		values = new short[initCap];
+		values = new char[initCap];
 		capacity = initCap;
 
 		loadFactor = load;
@@ -60,7 +69,7 @@ public class IntShortMap {
 		return size;
 	}
 
-	public int get(int key) {
+	public char get(int key) {
 		Integer ind = keyPos(key);
 		if (ind == null)
 			return 0;
@@ -68,7 +77,7 @@ public class IntShortMap {
 		return values[ind];
 	}
 
-	public int put(int key, short value) {
+	public int put(int key, char value) {
 		ensureSpace();
 
 		int ind = keyPos(key);
@@ -104,7 +113,6 @@ public class IntShortMap {
 				throw new UnsupportedOperationException();
 			}
 		};
-
 	}
 
 	private void ensureSpace() {
@@ -113,11 +121,11 @@ public class IntShortMap {
 			targetSize = (int) (ncap * loadFactor);
 
 			int[] okey = keys;
-			short[] oval = values;
+			char[] oval = values;
 
 			size = 0;
 			keys = new int[ncap];
-			values = new short[ncap];
+			values = new char[ncap];
 			capacity = ncap;
 			//hit= miss = 0;
 			for (int i = 0; i < okey.length; i++) {
@@ -160,7 +168,7 @@ public class IntShortMap {
 	 */
 	public static class Entry {
 		private int key;
-		private short value;
+		private char value;
 
 		public int getKey() {
 			return key;
@@ -174,7 +182,7 @@ public class IntShortMap {
 			return value;
 		}
 
-		void setValue(short value) {
+		void setValue(char value) {
 			this.value = value;
 		}
 	}

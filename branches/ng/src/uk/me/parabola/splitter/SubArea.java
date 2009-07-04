@@ -126,8 +126,14 @@ public class SubArea {
 		}
 	}
 
+	/**
+	 * Write the given node out the file.
+	 * @param node
+	 * @return
+	 * @throws IOException
+	 */
 	public boolean write(StringNode node) throws IOException {
-		if (extendedBounds.contains(node.getLocation())) {
+		if (contains(node.getLocation())) {
 			writer.append("<node id='");
 			writer.append(node.getStringId());
 			writer.append("' lat='");
@@ -179,6 +185,13 @@ public class SubArea {
 		if (rel.hasTags())
 			writeTags(rel);
 		writer.append("</relation>\n");
+	}
+
+	/**
+	 * Does this subarea contain the specified coordinate?
+	 */
+	public boolean contains(Coord coord) {
+		return extendedBounds.contains(coord);
 	}
 
 	private void writeTags(Element element) throws IOException {
