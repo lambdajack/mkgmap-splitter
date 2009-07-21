@@ -47,6 +47,7 @@ class SplitParser extends DefaultHandler {
 
 	private StringNode currentNode;
 	private int currentNodeAreaSet;
+	private AreaSet currentNodeSet;
 
 	private StringWay currentWay;
 	private int currentWayAreaSet;
@@ -71,6 +72,7 @@ class SplitParser extends DefaultHandler {
 		if (mode == 0) {
 			if (qName.equals("node")) {
 				mode = MODE_NODE;
+				stats.nNodes++;
 
 				String id = attributes.getValue("id");
 				String slat = attributes.getValue("lat");
@@ -81,16 +83,20 @@ class SplitParser extends DefaultHandler {
 				Coord coord = new Coord(lat, lon);
 
 				currentNode = new StringNode(coord, id, slat, slon);
-				currentNodeAreaSet = 0;
+				currentNodeSet.reset();
 
 			} else if (qName.equals("way")) {
 				mode = MODE_WAY;
+				stats.nWays++;
+
 				String id = attributes.getValue("id");
 				currentWay = new StringWay(id);
 				currentWayAreaSet = 0;
 				
 			} else if (qName.equals("relation")) {
 				mode = MODE_RELATION;
+				stats.nRelations++;
+
 				String id = attributes.getValue("id");
 				currentRelation = new StringRelation(id);
 				currentRelAreaSet = 0;
@@ -183,7 +189,7 @@ class SplitParser extends DefaultHandler {
 			if (qName.equals("node")) {
 				mode = 0;
 				try {
-					writeNode(currentNode);
+					writeNode();
 				} catch (IOException e) {
 					throw new SAXException("failed to write", e);
 				}
@@ -261,23 +267,23 @@ class SplitParser extends DefaultHandler {
 		ways.put(way.getId(), currentWayAreaSet);
 	}
 
-	private void writeNode(StringNode node) throws IOException {
+	/**
+	 * Go through all the areas and see which ones the node belongs to.  There can be more
+	 * than one, because we test against the extended area which overlaps with other areas.
+	 *
+	 * @throws IOException If the write fails for any reason.
+	 */
+	private void writeNode() throws IOException {
+		StringNode node = currentNode;
 		for (int n = 1; n <= areas.length; n++) {
 			SubArea a = areas[n-1];
-			if (a.contains(node.getLocation())) {
+			if (a.containedInExtendedArea(node.getLocation())) {
 				a.write(node);
-				addAreaForNode(a);
-				if (currentNodeAreaSet == n) {
-					// Do nothing, already in, the normal case
-				} else if (currentNodeAreaSet == 0) {
-					currentNodeAreaSet = n;
-				} else {
-					currentNodeAreaSet = addToSet(currentNodeAreaSet, n,
-							"Node " + node.getStringId());
-				}
+
+				currentNodeSet.add(a);
 			}
 		}
-		//coords.put(node.getId(), currentNodeAreaSet);
+		//coords.put(node.getId(), currentNodeSet);
 	}
 
 	private void addAreaForNode(SubArea a) {
@@ -297,5 +303,13 @@ class SplitParser extends DefaultHandler {
 		private int nRelations;
 
 		private int nNodeOverlaps;
+	}
+
+	private class AreaSet {
+		public void reset() {
+		}
+
+		public void add(SubArea area) {
+		}
 	}
 }

@@ -93,7 +93,7 @@ public class SplitIntCharMap {
 	 * add to the map any more to reduce the overhead of having several sub-maps.
 	 */
 	public void trim() {
-		assert false : "not impemented";
+		assert false : "not impemented"; 
 		for (int i = 0; i < NMAPS; i++) {
 			//maps[i].trim();
 		}

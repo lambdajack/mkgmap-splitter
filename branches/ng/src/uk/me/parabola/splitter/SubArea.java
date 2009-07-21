@@ -133,7 +133,7 @@ public class SubArea {
 	 * @throws IOException
 	 */
 	public boolean write(StringNode node) throws IOException {
-		if (contains(node.getLocation())) {
+		if (containedInExtendedArea(node.getLocation())) {
 			writer.append("<node id='");
 			writer.append(node.getStringId());
 			writer.append("' lat='");
@@ -188,9 +188,11 @@ public class SubArea {
 	}
 
 	/**
-	 * Does this subarea contain the specified coordinate?
+	 * Does the extended subarea contain the specified coordinate?  This the area
+	 * that overlaps with other tiles, so that even nodes can be in more than one
+	 * extended area.
 	 */
-	public boolean contains(Coord coord) {
+	public boolean containedInExtendedArea(Coord coord) {
 		return extendedBounds.contains(coord);
 	}
 
