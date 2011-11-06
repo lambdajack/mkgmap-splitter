@@ -51,7 +51,7 @@ public class SparseInt2ShortMapInline  implements Int2ShortFunction {
 	}
 	short []chunkMake() {
 		short out[] = new short[4];
-		Arrays.fill(out,(short)4);
+		Arrays.fill(out,(short) unassigned);
 		return out;
 		}
 	void chunkSet(short[] array, int index, short val) {

@@ -38,14 +38,17 @@ public class BinaryMapParser extends BinaryParser {
 			
 			Node tmp = new Node();
 			tmp.set((int)id, latf, lonf);
-            if (nodes.getKeysValsCount() > 0) {
-                while (nodes.getKeysVals(j) != 0) {
-                    int keyid = nodes.getKeysVals(j++);
-                    int valid = nodes.getKeysVals(j++);
-                    tmp.addTag(getStringById(keyid),getStringById(valid));
-                }
-                j++; // Skip over the '0' delimiter.
-            }
+			if (!processor.isStartNodeOnly()) {
+				if (nodes.getKeysValsCount() > 0) {
+					while (nodes.getKeysVals(j) != 0) {
+						int keyid = nodes.getKeysVals(j++);
+						int valid = nodes.getKeysVals(j++);
+						tmp.addTag(getStringById(keyid),getStringById(valid));
+					}
+					j++; // Skip over the '0' delimiter.
+
+				}
+			}
 			processor.processNode(tmp);
 			processNodes(tmp);
 		}
@@ -70,13 +73,15 @@ public class BinaryMapParser extends BinaryParser {
 	protected void parseWays(List<Osmformat.Way> ways) {
 		for (Osmformat.Way i : ways) {
 			Way tmp = new Way();
-			for (int j=0 ; j < i.getKeysCount(); j++)
-				tmp.addTag(getStringById(i.getKeys(j)),getStringById(i.getVals(j)));
+			if (!processor.isStartNodeOnly()) {
+				for (int j=0 ; j < i.getKeysCount(); j++)
+					tmp.addTag(getStringById(i.getKeys(j)),getStringById(i.getVals(j)));
 
-			long last_id=0;
-			for (long j : i.getRefsList()) {
+				long last_id=0;
+				for (long j : i.getRefsList()) {
 				tmp.addRef((int)(j+last_id));
-				last_id = j+last_id;
+					last_id = j+last_id;
+				}
 			}
 
 			long id = i.getId();

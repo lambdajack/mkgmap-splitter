@@ -30,8 +30,9 @@ import java.util.concurrent.BlockingQueue;
  */
 class SplitProcessor implements MapProcessor {
 
-	private final SparseInt2ShortMultiMap coords = new SparseInt2ShortMultiMap((short) -1,2);
-	private final SparseInt2ShortMultiMap ways = new SparseInt2ShortMultiMap((short) -1,2);
+	private final Node2AreaMap ways;
+	private final Node2AreaMap coords;
+	
 
 	private final OSMWriter[] writers;
 	private final InputQueueInfo[] writerInputQueues;
@@ -83,6 +84,8 @@ class SplitProcessor implements MapProcessor {
 
 	SplitProcessor(OSMWriter[] writers, int maxThreads) {
 		this.writers = writers;
+		this.ways = new Node2AreaMap((short) -1, writers.length);
+		this.coords = new Node2AreaMap((short) -1, writers.length);
 		makeWriterMap();
 		this.maxThreads = maxThreads;
 		this.toProcess = new ArrayBlockingQueue<InputQueueInfo>(writers.length); 
