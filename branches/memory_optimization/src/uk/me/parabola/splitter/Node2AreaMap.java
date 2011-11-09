@@ -17,20 +17,26 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
 
-// a map that stores all areas in which a node or way occurs 
+/// a map that stores all areas in which a node occurs.
 public class Node2AreaMap {
 	private int size;
-	private final short unassigned;
+	private final short unassigned = -1;
 
-	private SparseInt2ShortMapInline map;   
+	private SparseLong2ShortMapFunction map;
 	private final ObjectArrayList<BitSet> dictionary; 
 	private final HashMap<BitSet, Short> index;
-
 	
-	public Node2AreaMap(short unassigned, int numareas) {
-		System.out.println("Making Node2AreaMap");
-		map = new SparseInt2ShortMapInline ();
-		this.unassigned = unassigned;
+	public Node2AreaMap(int numareas, long nodeCount, long maxNodeId, boolean optimizeMem) { 
+		if (optimizeMem) {
+			System.out.println("Making Node2AreaMap using SparseLong2ShortMapInline for (estimated) " + nodeCount + " Nodes"); 
+			map = new SparseLong2ShortMapInline (nodeCount, maxNodeId);
+		}
+		else { 
+			System.out.println("Making Node2AreaMap using SparseLong2ShortMapFix for highest NodeId " + maxNodeId); 
+			map = new SparseLong2ShortMapFix (nodeCount, maxNodeId);
+		}
+		
+
 		map.defaultReturnValue(unassigned);
 		dictionary = new ObjectArrayList<BitSet>();
 		index = new HashMap<BitSet, Short>();
@@ -44,7 +50,7 @@ public class Node2AreaMap {
 		}
 	}
 	
-	public void addTo(int key, BitSet out) {
+	public void addTo(long key, BitSet out) {
 		int idx = map.get (key);
 		if (idx == unassigned)
 			return;
@@ -53,10 +59,9 @@ public class Node2AreaMap {
 }
 
 	
-	public void put(int key, short val) {
+	public void put(long key, short val) {
 		//System.out.println("p"+key+","+val);
 
-     
 		int idx = map.get (key);
 		BitSet bnew;
 		if (idx == unassigned) {
@@ -68,13 +73,13 @@ public class Node2AreaMap {
 			map.put (key,val); 
 		}
 		else {
-			// unlikely: node (or way) belongs to multiple areas
+			// unlikely: node or way belongs to multiple areas
 			bnew = (BitSet) dictionary.get(idx).clone();
 			bnew.set(val);
 			
 			Short combiIndex = index.get(bnew);
 			if (combiIndex == null){
-				// this is a new conbination of areas, create new entry 
+				// this is a new combination of areas, create new entry 
 				// in the dictionary
 				combiIndex = (short) dictionary.size();
 				dictionary.add(bnew);
@@ -86,7 +91,7 @@ public class Node2AreaMap {
 		
 	}
 	
-	public boolean contains (int key) {
+	public boolean contains (long key) {
 		return map.containsKey(key);
 	}
 	
@@ -97,6 +102,6 @@ public class Node2AreaMap {
 	
 	public void stats() {
 		System.out.println("MAP occupancy: " + Utils.format(size) + ", number of area dictionary entries: " + dictionary.size());
-		//map.stats();
+		map.stats();
 	}
 }

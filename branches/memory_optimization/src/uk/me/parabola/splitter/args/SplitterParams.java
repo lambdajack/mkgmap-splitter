@@ -72,4 +72,8 @@ public interface SplitterParams {
 	
 	@Option(defaultValue = "unset", description = "The output type, either pbf or xml.")
 	String getOutput();
+
+	@Option(description = "Store data in HashMap instead of array. Use this option when heap is small.")
+	boolean isOptimizeMem();
+
 }

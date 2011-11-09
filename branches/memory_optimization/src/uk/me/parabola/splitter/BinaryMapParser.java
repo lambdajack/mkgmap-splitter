@@ -37,7 +37,8 @@ public class BinaryMapParser extends BinaryParser {
             double latf = parseLat(lat), lonf = parseLon(lon);
 			
 			Node tmp = new Node();
-			tmp.set((int)id, latf, lonf);
+			tmp.set(id, latf, lonf);
+			
 			if (!processor.isStartNodeOnly()) {
 				if (nodes.getKeysValsCount() > 0) {
 					while (nodes.getKeysVals(j) != 0) {
@@ -62,7 +63,7 @@ public class BinaryMapParser extends BinaryParser {
 			long id = i.getId();
 			double latf = parseLat(i.getLat()), lonf = parseLon(i.getLon());
 
-			tmp.set((int)id, latf, lonf);
+			tmp.set(id, latf, lonf);
 
 			processor.processNode(tmp);
 			processNodes(tmp);
@@ -79,13 +80,13 @@ public class BinaryMapParser extends BinaryParser {
 
 				long last_id=0;
 				for (long j : i.getRefsList()) {
-				tmp.addRef((int)(j+last_id));
+					tmp.addRef(j+last_id);
 					last_id = j+last_id;
 				}
 			}
 
 			long id = i.getId();
-			tmp.set((int)id);
+			tmp.set(id);
 
 			processor.processWay(tmp);
 			processWays(tmp);
@@ -99,7 +100,7 @@ public class BinaryMapParser extends BinaryParser {
 				tmp.addTag(getStringById(i.getKeys(j)),getStringById(i.getVals(j)));
 
 			long id = i.getId();
-			tmp.set((int)id);
+			tmp.set(id);
 			
 			long last_mid=0;
 			for (int j =0; j < i.getMemidsCount() ; j++) {
@@ -117,7 +118,7 @@ public class BinaryMapParser extends BinaryParser {
 				else
 					assert false; // TODO; Illegal file?
 
-				tmp.addMember(etype,(int)mid,role);
+				tmp.addMember(etype,mid,role);
 			}
 			processor.processRelation(tmp);
 			processRelations(tmp);
@@ -172,4 +173,7 @@ public class BinaryMapParser extends BinaryParser {
 		}
 	}
 
+	public long getNodeCount() {
+		return nodeCount;
+	}
 }

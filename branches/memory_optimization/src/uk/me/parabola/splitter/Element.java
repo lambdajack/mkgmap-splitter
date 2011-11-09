@@ -14,23 +14,21 @@ package uk.me.parabola.splitter;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 
 /**
  * @author Steve Ratcliffe
  */
 public class Element {
 	private ArrayList<Tag> tags; 
-	private int id;
+	private long id;
 
 	
-	protected void setId(int id) {
+	protected void setId(long id) {
 		this.id = id;
 	}
 
-	public int getId() {
+	public long getId() {
 		return id;
 	}
 

@@ -33,14 +33,14 @@ class SplitProcessor implements MapProcessor {
 	private final Node2AreaMap ways;
 	private final Node2AreaMap coords;
 	
-
+	
 	private final OSMWriter[] writers;
 	private final InputQueueInfo[] writerInputQueues;
 	private final BlockingQueue<InputQueueInfo> toProcess;
 	private final ArrayList<Thread> workerThreads;
 	private final InputQueueInfo STOP_MSG = new InputQueueInfo(null);
 
-	private int currentNodeAreaSet;
+	//private int currentNodeAreaSet;
 	private BitSet currentWayAreaSet;
 	private BitSet currentRelAreaSet;
 	
@@ -82,10 +82,10 @@ class SplitProcessor implements MapProcessor {
 		}
 	}
 
-	SplitProcessor(OSMWriter[] writers, int maxThreads) {
+	SplitProcessor(OSMWriter[] writers, int maxThreads, long nodeCount, long maxNodeId, boolean optimizeMem) {
 		this.writers = writers;
-		this.ways = new Node2AreaMap((short) -1, writers.length);
-		this.coords = new Node2AreaMap((short) -1, writers.length);
+		this.coords = new Node2AreaMap(writers.length, nodeCount, maxNodeId, optimizeMem);
+		this.ways = new Node2AreaMap(writers.length, nodeCount/4, maxNodeId, optimizeMem); 
 		makeWriterMap();
 		this.maxThreads = maxThreads;
 		this.toProcess = new ArrayBlockingQueue<InputQueueInfo>(writers.length); 
@@ -119,7 +119,7 @@ class SplitProcessor implements MapProcessor {
 	public void processNode(Node n) {
 		try {
 			writeNode(n);
-			currentNodeAreaSet = 0;
+			//currentNodeAreaSet = 0;
 		} catch (IOException e) {
 			throw new RuntimeException("failed to write node " + n.getId(), e);
 		}
@@ -128,7 +128,7 @@ class SplitProcessor implements MapProcessor {
 	@Override
 	public void processWay(Way w) {
 
-		for (int id: w.getRefs()) {
+		for (long id: w.getRefs()) {
 			// Get the list of areas that the node is in.  A node may be in
 			// more than one area because of overlap.
 			coords.addTo(id, currentWayAreaSet);
@@ -145,8 +145,8 @@ class SplitProcessor implements MapProcessor {
 	public void processRelation(Relation r) {
 		try {
 			for (Member mem : r.getMembers()) {
-				String role = mem.getRole();
-				int id = mem.getRef();
+				//String role = mem.getRole();
+				long id = mem.getRef();
 				if (mem.getType().equals("node")) {
 					coords.addTo(id, currentRelAreaSet);
 				} else if (mem.getType().equals("way")) {

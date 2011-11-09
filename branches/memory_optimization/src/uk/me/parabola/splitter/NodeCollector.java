@@ -21,6 +21,8 @@ class NodeCollector implements MapCollector {
 	private SplitIntList coords = new SplitIntList();
 	private final MapDetails details = new MapDetails();
 	private Area bounds;
+	private long maxNodeId = Long.MIN_VALUE;
+	
 
 	@Override
 	public boolean isStartNodeOnly() {
@@ -40,6 +42,9 @@ class NodeCollector implements MapCollector {
 		// Since we are rounding areas to fit on a low zoom boundary we
 		// can drop the bottom 8 bits of the lat and lon and then fit
 		// the whole lot into a single int.
+		if (n.getId()> maxNodeId) {
+			maxNodeId = n.getId();
+		} 
 		int glat = n.getMapLat();
 		int glon = n.getMapLon();
 		int coord = ((glat << 8) & 0xffff0000) + ((glon >> 8) & 0xffff);
@@ -73,4 +78,10 @@ class NodeCollector implements MapCollector {
 		coords = null;
 		return result;
 	}
+
+	@Override
+	public long getMaxNodeId() {
+		return maxNodeId; 
+	}
+	
 }
