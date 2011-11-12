@@ -97,8 +97,13 @@ class OSMParser extends AbstractXppParser implements MapReader {
 			} else if (name.equals("way")) {
 				if (!startNodeOnly)
 					startWay();
-				else if (!mixed)
-					return true;
+				else {
+					long wayid =  getLongAttr("id");
+					if (wayid > maxNodeId) 
+						maxNodeId = wayid;
+					state = State.Way;					
+					if (!mixed) return true;
+				}
 			} else if (name.equals("relation")) {
 				if (!startNodeOnly)
 					startRelation();

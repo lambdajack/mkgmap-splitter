@@ -50,9 +50,8 @@ class DensityMapCollector implements MapCollector {
 
 	@Override
 	public void processNode(Node n) {
-		if (n.getId()> maxNodeId) {
+		if (n.getId()> maxNodeId) 
 			maxNodeId = n.getId();
-		} 
 		int glat = n.getMapLat();
 		int glon = n.getMapLon();
 		densityMap.addNode(glat, glon);
@@ -60,7 +59,10 @@ class DensityMapCollector implements MapCollector {
 	}
 
 	@Override
-	public void processWay(Way w) {}
+	public void processWay(Way w) {
+		if (w.getId()> maxNodeId) 
+			maxNodeId = w.getId();
+	}
 
 	@Override
 	public void processRelation(Relation r) {}

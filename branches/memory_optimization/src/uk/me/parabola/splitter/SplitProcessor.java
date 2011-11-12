@@ -201,9 +201,9 @@ class SplitProcessor implements MapProcessor {
 
 		//System.out.println("Send to "+entry.getValue().size());
 		for (OSMWriter w : writersets[index]) {
-			int n = writerToID.get(w);
 			boolean found = w.nodeBelongsToThisArea(currentNode); 
 			if (found) {
+				int n = writerToID.get(w);
 				if (maxThreads > 1) {
 					addToWorkingQueue(n, currentNode);
 				} else {
@@ -222,15 +222,13 @@ class SplitProcessor implements MapProcessor {
 			System.out.println("Writing ways " + new Date());
 		}
 		if (!currentWayAreaSet.isEmpty()) {
-				// this way falls into 4 or less areas (the normal case). Store these areas in the ways map
+				// Store these areas in the ways map
 				for (int n = currentWayAreaSet.nextSetBit(0); n >= 0; n = currentWayAreaSet.nextSetBit(n + 1)) {
 					if (maxThreads > 1) {
 						addToWorkingQueue(n, currentWay);
 					} else {
 						writers[n].write(currentWay);
 					}
-					// add one to the area so we're in the range 1-255. This is because we treat 0 as the
-					// equivalent of a null
 					ways.put(currentWay.getId(), (short) n);
 				}
 		}

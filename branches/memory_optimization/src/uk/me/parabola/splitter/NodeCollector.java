@@ -42,19 +42,23 @@ class NodeCollector implements MapCollector {
 		// Since we are rounding areas to fit on a low zoom boundary we
 		// can drop the bottom 8 bits of the lat and lon and then fit
 		// the whole lot into a single int.
-		if (n.getId()> maxNodeId) {
-			maxNodeId = n.getId();
-		} 
+
 		int glat = n.getMapLat();
 		int glon = n.getMapLon();
 		int coord = ((glat << 8) & 0xffff0000) + ((glon >> 8) & 0xffff);
 
+		if (n.getId()> maxNodeId) 
+			maxNodeId = n.getId();
 		coords.add(coord);
 		details.addToBounds(glat, glon);
 	}
 
 	@Override
-	public void processWay(Way w) {}
+	public void processWay(Way w) {
+		if (w.getId()> maxNodeId) 
+			maxNodeId = w.getId();
+		
+	}
 
 	@Override
 	public void processRelation(Relation r) {}

@@ -11,26 +11,36 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  */
 public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 	static final int MASK_SIZE = 4;	// number of chunk elements used to store mask
-	static final int POOL_SIZE = 8191;
-	
+	static final int POOL_SIZE = 8192;
+	enum Method {vector, hashmap};
+	private final Method method; 
+	private final long maxNodeId;
+	private final long nodeCount;
+
 	/** What to return on unassigned indices */
 	short unassigned = -1;
 	private long [] countChunkLen;
-	final int initsize;
-	
+	int initsize;
+
 	// we use a simple pool to be able to reuse allocated small chunks
 	private short[][] pool;
 	private int poolIndex = 0;
-	
+
 	private Int2ObjectOpenHashMap<short[]> chunkmap;
+	private short[][] chunkvector;
 
 	int size;
 
-	SparseLong2ShortMapInline(long nodeCount, long MaxNodeId) {
+	SparseLong2ShortMapInline(long nodeCount, long maxNodeId, boolean optimizeMem) {
 		// estimate the needed elements
-		this.initsize = (int) (nodeCount/(CHUNK_SIZE/8));
+		this.maxNodeId = maxNodeId;
+		this.nodeCount = nodeCount;
+		if (optimizeMem)
+			method = Method.hashmap;
+		else 
+			method = Method.vector;
 		clear();
-		
+
 	}
 
 	void arrayPush(short[] array, int index) {
@@ -68,9 +78,8 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 			out = pool[poolIndex];
 			storeMask(0L, out);
 			pool[poolIndex] = null;
-			if (poolIndex < POOL_SIZE) 
-				++poolIndex;
-			else {
+			++poolIndex;
+			if (poolIndex >= POOL_SIZE){ 
 				// chunks from current pool are now all in use by the chunkmap. 
 				makeNewPool();
 			}
@@ -110,7 +119,7 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 					"Cannot handle such key, is too high. key=" + key);
 		}
 		int chunkid = (int) (key / CHUNK_SIZE);
-		short [] chunk = chunkmap.get(chunkid);
+		short [] chunk = getChunk(chunkid);
 		if (chunk == null) 
 			return false;
 		long chunkmask = extractMask(chunk);
@@ -125,7 +134,7 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		if (val == unassigned) {
 			throw new IllegalArgumentException(
 					"Cannot store the value that is reserved as being unassigned. val="
-							+ val);
+					+ val);
 		}
 		if (key < 0) {
 			throw new IllegalArgumentException("Cannot store the negative key,"
@@ -137,12 +146,12 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 
 		int chunkid = (int) (key / CHUNK_SIZE);
 		int chunkoffset = (int) (key % CHUNK_SIZE);
-		short [] chunk = chunkmap.get(chunkid);
+		short [] chunk = getChunk(chunkid);
 		if (chunk == null)
 			chunk = chunkMake();
-		
+
 		long chunkmask = extractMask(chunk);
-		
+
 		long elementmask = 1L << chunkoffset;
 		if ((chunkmask & elementmask) != 0) {
 			// Already in the array, find the offset and store.
@@ -159,11 +168,11 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 			chunk = chunkAdd(chunk, offset, val);
 			chunkmask |= elementmask;
 			storeMask(chunkmask, chunk);
-			chunkmap.put(chunkid, chunk);
+			putChunk (chunkid, chunk);
 			return unassigned;
 		}
 	}
-	
+
 	@Override
 	public short get(long key) {
 		if (key >= MAX_KEY) {
@@ -172,7 +181,7 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		}
 
 		int chunkid = (int) (key / CHUNK_SIZE);
-		short [] chunk = chunkmap.get(chunkid);
+		short [] chunk = getChunk(chunkid);
 		if (chunk == null) 
 			return unassigned;
 		long chunkmask = extractMask(chunk);
@@ -187,7 +196,16 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 
 	@Override
 	public void clear() {
-		chunkmap = new Int2ObjectOpenHashMap<short[]>(initsize);
+		if (method == Method.hashmap) {
+			initsize = (int) (nodeCount/(CHUNK_SIZE/8)) + 1;
+			System.out.println("Allocating hashmap for (estimated) " + Utils.format(initsize) + " chunks to store " + nodeCount + " ids."); 
+			chunkmap = new Int2ObjectOpenHashMap<short[]>(initsize);
+		}
+		else { 
+			initsize = (int) (maxNodeId /CHUNK_SIZE) + 1;
+			System.out.println("Allocating vector for " + Utils.format(initsize) + " chunks to store " + nodeCount + " ids.");
+			chunkvector = new short [(int)(this.maxNodeId /CHUNK_SIZE)+1][];
+		}
 		countChunkLen = new long[CHUNK_SIZE + MASK_SIZE + 1 ];
 		makeNewPool();
 		size = 0;
@@ -233,17 +251,29 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 	public void defaultReturnValue(short arg0) {
 		unassigned = arg0;
 	}
-	
-	private void storeMask (long mask, short[] chunk) {
-			// store chunkmask in chunk
-			long tmp = mask;
-			if (tmp == 32768)
-				tmp = 32768;
-			for (int i = 0; i < MASK_SIZE; i++){ 
-				chunk[i] = (short) (tmp & 0xffffL);
-				tmp = (tmp >> 16);
+
+	private short[] getChunk (int chunkid){
+		if (method == Method.hashmap)
+			return chunkmap.get(chunkid);
+		else 
+			return chunkvector[chunkid];
 	}
-			}
+
+	private void putChunk (int chunkid, short[] chunk) {
+		if (method == Method.hashmap)
+			chunkmap.put(chunkid, chunk);
+		else
+			chunkvector [chunkid] = chunk;
+	}
+
+	private void storeMask (long mask, short[] chunk) {
+		// store chunkmask in chunk
+		long tmp = mask;
+		for (int i = 0; i < MASK_SIZE; i++){ 
+			chunk[i] = (short) (tmp & 0xffffL);
+			tmp = (tmp >> 16);
+		}
+	}
 	private long extractMask(short [] chunk){
 		long mask = 0;
 		for (int i = 0; i < MASK_SIZE; i++) {
@@ -255,10 +285,10 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 	}
 
 	private void makeNewPool(){
-		pool = new short[POOL_SIZE+1][8];
+		pool = new short[POOL_SIZE][8];
 		poolIndex = 0;
 	}
-	
+
 	@Override
 	public void stats() {
 		long usedChunks = 0;
@@ -269,9 +299,14 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 				//	System.out.println("type-" + i + " chunks: " + Utils.format(countChunkLen[i]));
 			}
 		}
-		if (initsize > 0) 
-			pctusage = Math.round((double)usedChunks*100/initsize) ;
-		System.out.println("chunk map details: Used " + Utils.format(chunkmap.size()) + " (~ " + pctusage + "%) of the estimated " + initsize + " map entries." );
+		pctusage = Math.round((float)usedChunks*100/initsize) ;
+		if (method == Method.hashmap) { 
+			System.out.println("Chunk map details: used " + Utils.format(chunkmap.size()) + " (~ " + pctusage + "%) of the estimated " + Utils.format(initsize) + " entries." );
+		}
+		else {
+			System.out.println("Chunk vector details: used " + Utils.format(usedChunks) + " of " + Utils.format(initsize) + " allocated entries (~ " + pctusage + "%)");
+		}
 	}
-}	
+}
+
 

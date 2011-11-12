@@ -11,22 +11,24 @@ public class BinaryMapParser extends BinaryParser {
 	private static final int WAY_STATUS_UPDATE_THRESHOLD = 1000000;
 	private static final int RELATION_STATUS_UPDATE_THRESHOLD = 100000;
 
-	
+
 	private long nodeCount;
 	private long wayCount;
 	private long relationCount;	
-	
+
 	BinaryMapParser(MapProcessor processor) {
 		this.processor = processor;
 	}
 	MapProcessor processor;
-	
-		public void complete() {
-		  // End of map is sent when all input files are processed.
-		  // So do nothing.
-		}
-		
+
+	@Override
+	public void complete() {
+		// End of map is sent when all input files are processed.
+		// So do nothing.
+	}
+
 	// Per-block state for parsing, set when processing the header of a block;
+	@Override
 	protected void parseDense(Osmformat.DenseNodes nodes) {
 		long last_id = 0, last_lat = 0, last_lon = 0;
 		int j = 0; 
@@ -34,11 +36,11 @@ public class BinaryMapParser extends BinaryParser {
 			long lat = nodes.getLat(i)+last_lat; last_lat = lat;
 			long lon = nodes.getLon(i)+last_lon; last_lon = lon;
 			long id =  nodes.getId(i)+last_id; last_id = id;
-            double latf = parseLat(lat), lonf = parseLon(lon);
-			
+			double latf = parseLat(lat), lonf = parseLon(lon);
+
 			Node tmp = new Node();
 			tmp.set(id, latf, lonf);
-			
+
 			if (!processor.isStartNodeOnly()) {
 				if (nodes.getKeysValsCount() > 0) {
 					while (nodes.getKeysVals(j) != 0) {
@@ -51,10 +53,11 @@ public class BinaryMapParser extends BinaryParser {
 				}
 			}
 			processor.processNode(tmp);
-			processNodes(tmp);
+			CountNode(tmp.getId());
 		}
 	}
 
+	@Override
 	protected void parseNodes(List<Osmformat.Node> nodes) {
 		for (Osmformat.Node i : nodes) {
 			Node tmp = new Node();
@@ -66,15 +69,33 @@ public class BinaryMapParser extends BinaryParser {
 			tmp.set(id, latf, lonf);
 
 			processor.processNode(tmp);
-			processNodes(tmp);
+			CountNode(tmp.getId());
 		}
 	}
 
-	
+
+	@Override
 	protected void parseWays(List<Osmformat.Way> ways) {
-		for (Osmformat.Way i : ways) {
-			Way tmp = new Way();
-			if (!processor.isStartNodeOnly()) {
+
+		long numways = ways.size();
+		if (numways == 0) 
+			return;
+		if (processor.isStartNodeOnly()) {
+			// we just count the ways, so no need to iterate through the list
+			if (wayCount > 0) {
+				long x = (numways + wayCount) % WAY_STATUS_UPDATE_THRESHOLD;
+				// get and report the id that hits the threshold value 
+				if (x <= numways) {
+					x = numways - x;
+					Osmformat.Way w = ways.get((int)(x - 1));
+					System.out.println(Utils.format(wayCount+x) + " ways processed... id=" + w.getId());
+				}
+			}
+			wayCount += numways;
+		}
+		else {
+			for (Osmformat.Way i : ways) {
+				Way tmp = new Way();
 				for (int j=0 ; j < i.getKeysCount(); j++)
 					tmp.addTag(getStringById(i.getKeys(j)),getStringById(i.getVals(j)));
 
@@ -83,16 +104,19 @@ public class BinaryMapParser extends BinaryParser {
 					tmp.addRef(j+last_id);
 					last_id = j+last_id;
 				}
+
+				long id = i.getId();
+				tmp.set(id);
+
+				processor.processWay(tmp);
+				countWay(i.getId());
 			}
-
-			long id = i.getId();
-			tmp.set(id);
-
-			processor.processWay(tmp);
-			processWays(tmp);
 		}
 	}
 
+
+
+	@Override
 	protected void parseRelations(List<Osmformat.Relation> rels) {
 		for (Osmformat.Relation i : rels) {
 			Relation tmp = new Relation();
@@ -101,14 +125,14 @@ public class BinaryMapParser extends BinaryParser {
 
 			long id = i.getId();
 			tmp.set(id);
-			
+
 			long last_mid=0;
 			for (int j =0; j < i.getMemidsCount() ; j++) {
 				long mid = last_mid + i.getMemids(j);
 				last_mid = mid;
 				String role = getStringById(i.getRolesSid(j));
 				String etype=null;
-				
+
 				if (i.getTypes(j) == Osmformat.Relation.MemberType.NODE)
 					etype = "node";
 				else if (i.getTypes(j) == Osmformat.Relation.MemberType.WAY)
@@ -121,17 +145,18 @@ public class BinaryMapParser extends BinaryParser {
 				tmp.addMember(etype,mid,role);
 			}
 			processor.processRelation(tmp);
-			processRelations(tmp);
+			countRelation(tmp.getId());
 		}
 	}
 
+	@Override
 	public void parse(Osmformat.HeaderBlock block) {
 
 		for (String s : block.getRequiredFeaturesList()) {
-            if (s.equals("OsmSchema-V0.6")) continue; // OK.
-            if (s.equals("DenseNodes")) continue; // OK.
-            throw new UnknownFeatureException(s);
-        }
+			if (s.equals("OsmSchema-V0.6")) continue; // OK.
+			if (s.equals("DenseNodes")) continue; // OK.
+			throw new UnknownFeatureException(s);
+		}
 
 		if (block.hasBbox()) {
 			final double multiplier = .000000001;
@@ -151,25 +176,25 @@ public class BinaryMapParser extends BinaryParser {
 		}
 	}
 
-	private void processNodes(Node tmp) {
+	private void CountNode(long id) {
 		nodeCount++;
 		if (nodeCount % NODE_STATUS_UPDATE_THRESHOLD == 0) {
-			System.out.println(Utils.format(nodeCount) + " nodes processed... id="+tmp.getId());
+			System.out.println(Utils.format(nodeCount) + " nodes processed... id=" + id);
 		}
 
 	}
 
-	private void processWays(Way tmp)  {
+	private void countWay(long id)  {
 		wayCount++;
 		if (wayCount % WAY_STATUS_UPDATE_THRESHOLD == 0) {
-			System.out.println(Utils.format(wayCount) + " ways processed... id="+tmp.getId());
+			System.out.println(Utils.format(wayCount) + " ways processed... id=" + id);
 		}
 	}
 
-	private void processRelations(Relation tmp)  {
+	private void countRelation(long id)  {
 		relationCount++;
 		if (relationCount % RELATION_STATUS_UPDATE_THRESHOLD == 0) {
-			System.out.println(Utils.format(relationCount) + " relations processed... id="+tmp.getId());
+			System.out.println(Utils.format(relationCount) + " relations processed... id=" + id);
 		}
 	}
 
