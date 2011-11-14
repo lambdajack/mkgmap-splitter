@@ -28,7 +28,7 @@ public interface SplitterParams {
 	@Option(description = "A default description to give to each area.")
 	String getDescription();
 
-	@Option(defaultValue = "255", description = "The maximum number of areas to process in a single pass. More areas require more memory. 1-255.")
+	@Option(defaultValue = "1024", description = "The maximum number of areas to process in a single pass. More areas require more memory. 1-1024.")
 	int getMaxAreas();
 
 	@Option(defaultValue = "2000", description = "Nodes/ways/rels that fall outside an area will still be included if they are within this many map units.")

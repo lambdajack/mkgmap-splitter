@@ -21,8 +21,7 @@ class DensityMapCollector implements MapCollector {
 	private final DensityMap densityMap;
 	private final MapDetails details = new MapDetails();
 	private Area bounds;
-	private long maxNodeId = Long.MIN_VALUE;
-	
+
 	DensityMapCollector(boolean trim, int resolution) {
 		this(null, trim, resolution);
 	}
@@ -50,8 +49,6 @@ class DensityMapCollector implements MapCollector {
 
 	@Override
 	public void processNode(Node n) {
-		if (n.getId()> maxNodeId) 
-			maxNodeId = n.getId();
 		int glat = n.getMapLat();
 		int glon = n.getMapLon();
 		densityMap.addNode(glat, glon);
@@ -59,10 +56,7 @@ class DensityMapCollector implements MapCollector {
 	}
 
 	@Override
-	public void processWay(Way w) {
-		if (w.getId()> maxNodeId) 
-			maxNodeId = w.getId();
-	}
+	public void processWay(Way w) {}
 
 	@Override
 	public void processRelation(Relation r) {}
@@ -83,10 +77,5 @@ class DensityMapCollector implements MapCollector {
 	public SplittableArea getRoundedArea(int resolution) {
 		Area bounds = RoundingUtils.round(getExactArea(), resolution);
 		return new SplittableDensityArea(densityMap.subset(bounds));
-	}
-
-	@Override
-	public long getMaxNodeId() {
-		return maxNodeId; 
 	}
 }

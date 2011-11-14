@@ -51,12 +51,12 @@ class OSMParser extends AbstractXppParser implements MapReader {
 		this.startNodeOnly = processor.isStartNodeOnly();
 		this.mixed = mixed;
 	}
+	/*
 	@Override
 	public long getNodeCount() {
 		return nodeCount;
 	}
 
-	/*
 	@Override
 	public long getWayCount() {
 		return wayCount;
@@ -66,6 +66,7 @@ class OSMParser extends AbstractXppParser implements MapReader {
 	public long getRelationCount() {
 		return relationCount;
 	}
+
 	@Override
 	public int getMinNodeId() {
 		return minNodeId;
@@ -76,7 +77,6 @@ class OSMParser extends AbstractXppParser implements MapReader {
 		return maxNodeId;
 	}
 	*/
-
 	public void endMap() {
 		processor.endMap();
 	}
@@ -92,18 +92,12 @@ class OSMParser extends AbstractXppParser implements MapReader {
 			if (action != null && action.equals("delete"))
 				return false;
 			if (name.equals("node")) {
-			   ++nodeCount;
 				startNode();
 			} else if (name.equals("way")) {
 				if (!startNodeOnly)
 					startWay();
-				else {
-					long wayid =  getLongAttr("id");
-					if (wayid > maxNodeId) 
-						maxNodeId = wayid;
-					state = State.Way;					
-					if (!mixed) return true;
-				}
+				else if (!mixed)
+					return true;
 			} else if (name.equals("relation")) {
 				if (!startNodeOnly)
 					startRelation();
@@ -248,6 +242,7 @@ class OSMParser extends AbstractXppParser implements MapReader {
 			if (name.equals("node")) {
 				processor.processNode(currentNode);
 				state = State.None;
+				nodeCount++;
 				if (nodeCount % NODE_STATUS_UPDATE_THRESHOLD == 0) {
 					System.out.println(Utils.format(nodeCount) + " nodes processed...");
 				}

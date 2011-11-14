@@ -21,8 +21,6 @@ class NodeCollector implements MapCollector {
 	private SplitIntList coords = new SplitIntList();
 	private final MapDetails details = new MapDetails();
 	private Area bounds;
-	private long maxNodeId = Long.MIN_VALUE;
-	
 
 	@Override
 	public boolean isStartNodeOnly() {
@@ -47,18 +45,12 @@ class NodeCollector implements MapCollector {
 		int glon = n.getMapLon();
 		int coord = ((glat << 8) & 0xffff0000) + ((glon >> 8) & 0xffff);
 
-		if (n.getId()> maxNodeId) 
-			maxNodeId = n.getId();
 		coords.add(coord);
 		details.addToBounds(glat, glon);
 	}
 
 	@Override
-	public void processWay(Way w) {
-		if (w.getId()> maxNodeId) 
-			maxNodeId = w.getId();
-		
-	}
+	public void processWay(Way w) {}
 
 	@Override
 	public void processRelation(Relation r) {}
@@ -82,10 +74,4 @@ class NodeCollector implements MapCollector {
 		coords = null;
 		return result;
 	}
-
-	@Override
-	public long getMaxNodeId() {
-		return maxNodeId; 
-	}
-	
 }

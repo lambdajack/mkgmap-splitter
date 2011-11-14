@@ -19,6 +19,4 @@ public interface MapCollector extends MapProcessor {
 	SplittableArea getRoundedArea(int resolution);
 
 	void boundTag(Area bounds);
-	
-	long getMaxNodeId();
 }

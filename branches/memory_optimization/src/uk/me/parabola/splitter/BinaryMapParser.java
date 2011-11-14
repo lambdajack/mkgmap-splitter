@@ -198,7 +198,4 @@ public class BinaryMapParser extends BinaryParser {
 		}
 	}
 
-	public long getNodeCount() {
-		return nodeCount;
-	}
 }

@@ -27,9 +27,9 @@ public class Node2AreaMap {
 	private final HashMap<BitSet, Short> index;
 	private BitSet btst;
 
-	public Node2AreaMap(int numareas, long nodeCount, long maxNodeId, boolean optimizeMem) {
+	public Node2AreaMap(int numareas, boolean optimizeMem) {
 		System.out.println("Making Node2AreaMap");		
-		map = new SparseLong2ShortMapInline (nodeCount, maxNodeId, optimizeMem);
+		map = new SparseLong2ShortMapInline (optimizeMem);
 		map.defaultReturnValue(unassigned);
 		dictionary = new ObjectArrayList<BitSet>();
 		index = new HashMap<BitSet, Short>();
@@ -60,7 +60,7 @@ public class Node2AreaMap {
 		if (idx == unassigned) {
 			size++;
 			if (size %1000000 == 0) {
-				stats();
+				stats(0);
 			}
 			// node is new -> val is equal index
 			map.put (key,val); 
@@ -99,8 +99,8 @@ public class Node2AreaMap {
 		return size;
 	}
 
-	public void stats() {
+	public void stats(int msgLevel) {
 		System.out.println("MAP occupancy: " + Utils.format(size) + ", number of area dictionary entries: " + dictionary.size());
-		map.stats();
+		map.stats(msgLevel);
 	}
 }

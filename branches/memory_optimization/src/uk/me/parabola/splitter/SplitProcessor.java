@@ -82,10 +82,10 @@ class SplitProcessor implements MapProcessor {
 		}
 	}
 
-	SplitProcessor(OSMWriter[] writers, int maxThreads, long nodeCount, long maxNodeId, boolean optimizeMem) {
+	SplitProcessor(OSMWriter[] writers, int maxThreads, boolean optimizeMem) {
 		this.writers = writers;
-		this.coords = new Node2AreaMap(writers.length, nodeCount, maxNodeId, optimizeMem);
-		this.ways = new Node2AreaMap(writers.length, nodeCount/4, maxNodeId, optimizeMem); 
+		this.coords = new Node2AreaMap(writers.length, optimizeMem);
+		this.ways = new Node2AreaMap(writers.length, optimizeMem); 
 		makeWriterMap();
 		this.maxThreads = maxThreads;
 		this.toProcess = new ArrayBlockingQueue<InputQueueInfo>(writers.length); 
@@ -163,10 +163,14 @@ class SplitProcessor implements MapProcessor {
 
 	@Override
 	public void endMap() {
+		System.out.println("***********************************************************");
+		System.out.println("Final statistics");
+		System.out.println("***********************************************************");
 		System.out.println("coords occupancy");
-		coords.stats();
+		coords.stats(1);
 		System.out.println("ways occupancy");
-		ways.stats();
+		ways.stats(1);
+		System.out.println("");
 		for (int i = 0; i < writerInputQueues.length; i++) {
 			try {
 				writerInputQueues[i].stop();

@@ -47,8 +47,9 @@ import java.util.Set;
 public class Main {
 	private static final String DEFAULT_DIR = ".";
 
-	// We can only process a maximum of 255 areas at a time because we
-	// compress an area ID into 8 bits to save memory (and 0 is reserved)
+	// We store area IDs and all used combinations of area IDs in a dictionary. The index to this
+	// dictionary is saved in short values. If Short.MaxValue() is reached, the user might limit 
+	// the number of areas that is processed in one pass.  
 	private int maxAreasPerPass;
 
 	// A list of the OSM files to parse.
@@ -100,12 +101,9 @@ public class Main {
 	private int maxThreads;
 	// The output type
 	private boolean pbfOutput;
-	// The memory usage strategy 
+	// The memory usage strategy. Default is: favor speed by using ArrayList instead of HashMap  
 	private boolean optimizeMem = false;
 	
-	private long nodeCount;
-	private long maxNodeId;
-
 	public static void main(String[] args) {
 
 		Main m = new Main();
@@ -253,9 +251,9 @@ public class Main {
 		fileOutputDir = new File(outputDir == null? DEFAULT_DIR: outputDir);
 
 		maxAreasPerPass = params.getMaxAreas();
-		if (maxAreasPerPass < 1 || maxAreasPerPass > 255) {
-			System.err.println("The --max-areas parameter must be a value between 1 and 255. Resetting to 255.");
-			maxAreasPerPass = 255;
+		if (maxAreasPerPass < 1 || maxAreasPerPass > 1024) {
+			System.err.println("The --max-areas parameter must be a value between 1 and 1024. Resetting to 1024.");
+			maxAreasPerPass = 1024;
 		}
 		kmlOutputFile = params.getWriteKml();
 		densityMap = !params.isLegacyMode();
@@ -300,9 +298,7 @@ public class Main {
 		System.out.println("in " + filenames.size() + (filenames.size() == 1 ? " file" : " files"));
 
 		//System.out.println("Min node ID = " + mapReader.getMinNodeId());
-		maxNodeId = nodes.getMaxNodeId(); 
-		System.out.println("Max node ID = " + maxNodeId);
-		System.out.println("NodeCount: " + Utils.format(nodeCount));
+		//System.out.println("Max node ID = " + mapReader.getMaxNodeId());
 
 		System.out.println("Time: " + new Date());
 
@@ -372,7 +368,7 @@ public class Main {
 							" areas (" + areas.get(i * areasPerPass).getMapId() + " to " +
 							areas.get(i * areasPerPass + currentWriters.length - 1).getMapId() + ')');
 
-			MapProcessor processor = new SplitProcessor(currentWriters, maxThreads, nodeCount, maxNodeId, optimizeMem);
+			MapProcessor processor = new SplitProcessor(currentWriters, maxThreads, optimizeMem);
 			processMap(processor);
 			//System.out.println("Wrote " + Utils.format(mapReader.getNodeCount()) + " nodes, " +
 			//				Utils.format(mapReader.getWayCount()) + " ways, " +
@@ -383,7 +379,6 @@ public class Main {
 	private void processMap(MapProcessor processor) throws XmlPullParserException {
 		// Create both an XML reader and a binary reader, Dispatch each input to the
 		// Appropriate parser.
-		
 		OSMParser parser = new OSMParser(processor, mixed);
 		if (useStdIn) {
 			System.out.println("Reading osm data from stdin...");
@@ -398,7 +393,6 @@ public class Main {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			nodeCount = parser.getNodeCount();
 		}
 
 		for (String filename : filenames) {
@@ -407,15 +401,13 @@ public class Main {
 				if (filename.endsWith(".pbf")) {
 					// Is it a binary file?
 					File file = new File(filename);
-					BinaryMapParser tmpParser = new BinaryMapParser(processor); 
 					BlockInputStream blockinput = (new BlockInputStream(
-							new FileInputStream(file), tmpParser ));
+							new FileInputStream(file), new BinaryMapParser(processor)));
 					try {
 						blockinput.process();
 					} finally {
 						blockinput.close();
 					}
-					nodeCount += tmpParser .getNodeCount();
 				} else {
 					// No, try XML.
 					Reader reader = Utils.openFile(filename, maxThreads > 1);
@@ -425,7 +417,6 @@ public class Main {
 					} finally {
 						reader.close();
 					}
-					nodeCount  += parser.getNodeCount();
 				}
 			} catch (FileNotFoundException e) {
 				System.out.printf("ERROR: file %s was not found\n", filename);
