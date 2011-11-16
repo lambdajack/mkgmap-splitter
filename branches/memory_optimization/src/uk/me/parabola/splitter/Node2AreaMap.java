@@ -17,7 +17,10 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
 
-/// a map that stores all areas in which a node occurs.
+/**
+ * A map that stores all areas in which a node or way ID occurs.
+ * 
+ */
 public class Node2AreaMap {
 	private int size;
 	private final short unassigned = -1;
@@ -53,17 +56,19 @@ public class Node2AreaMap {
 	}
 
 
+	
 	public void put(long key, short val) {
 		//System.out.println("p"+key+","+val);
 
-		int idx = map.get (key);
+		// if the value is new, we store it directly as 
+		// it is the index to our dictionary
+		int idx = map.putIfAbsent (key, val);
 		if (idx == unassigned) {
 			size++;
 			if (size %1000000 == 0) {
 				stats(0);
 			}
-			// node is new -> val is equal index
-			map.put (key,val); 
+			//map.put (key, val);
 		}
 		else {
 			// unlikely: node or way belongs to multiple areas

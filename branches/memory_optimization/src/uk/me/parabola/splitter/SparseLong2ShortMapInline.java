@@ -1,113 +1,228 @@
 package uk.me.parabola.splitter;
 
 import it.unimi.dsi.bits.Fast;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
+import java.util.Arrays;
+
 /**
- * SparseLong2ShortMapFunction optimized for low memory requirements.
- * 
- * @author GerdP
+ * SparseLong2ShortMapInline implements SparseLong2ShortMapFunction 
+ * optimized for low memory requirements and 
+ * inserts in sequential order (lowest indexes first).
  *
+ * Inspired by SparseInt2ShortMapInline.
+ * Key values are limited to a maximum of 2^37 - 1.
+ * 
+ * A chunk stores up to CHUNK_SIZE values and a bit-mask. The bit-mask is used
+ * to separate used and unused entries in the chunk. Thus, the chunk length 
+ * depends on the number of used entries, not on the highest used entry.
+ * A typical (uncompressed) chunk looks like this:
+ * {m1,m2,m3,m4,v1,v1,v1,v1,v1,v1,v2,v2,v2,v2,v1,v1,v1,v1,u,u}
+ * m1-m4: the bit-mask
+ * v1,v2: values stored in the chunk
+ * u: unassigned field
+ * 
+ * After applying Run Length Encryption on this the chunk looks like this:
+ * {m1,m2,m3,m4,RLE_FLAG,5,v1,4,v2,4,v1,0}
+ * 
+ * Fortunately, OSM data is distributed in a way that most(!) chunks contain
+ * just one distinct value, so most chunks can be stored in 8 shorts.
  */
 public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
-	static final int SIZE_INCR = 1024; 
+	static final int CHUNK_SIZE = 64; // MUST be <= 64.
+	static final long MAX_KEY = (long) (CHUNK_SIZE * (long) Integer.MIN_VALUE * -1L) - 1;  // 2^37 - 1 
+	static final int SIZE_INCR = 1024;
+	static final long INIT_SIZE = 1L<<31; // maximum ID that can be saved without re-sizing 
+	
+	static final int SPARSE_CHUNK_VECTOR_SIZE = 16; 
+	
 	static final int MASK_SIZE = 4;	// number of chunk elements used to store mask
-	static final int POOL_SIZE = 8192;
-	enum Method {vector, hashmap};
+	static final short RLE_FLAG = Short.MIN_VALUE; // signals  RLE compressed chunk 
+	
+	enum Method {array, sparsearray};
 	private final Method method; 
+
+	private ObjectArrayList<short[]> chunkvector;	// directly addresses chunks
+	private ObjectArrayList<short[][]> topvector;	// addresses vectors of references of chunks 
+	
+	int size;
+
+	int oldChunkId = -1;
+	short [] oldChunk = null; 
+	short [] currentChunk = new short[CHUNK_SIZE+MASK_SIZE]; 
+	short [] tmpWork = new short[CHUNK_SIZE+MASK_SIZE]; 
+	short [] RLEWork = new short[CHUNK_SIZE+MASK_SIZE]; 
 
 	/** What to return on unassigned indices */
 	short unassigned = -1;
-	private long [] countChunkLen;
 	int capacity = 0; // available chunks in vector 
-	int initsize = 32768; // estimated number of needed chunks
 	
-	// we use a simple pool to be able to reuse allocated small chunks
-	private short[][] pool;
-	private int poolIndex = 0;
-
-	private Int2ObjectOpenHashMap<short[]> chunkmap;
-	private ObjectArrayList<short[]> chunkvector;
-
-	int size;
-
+	// for statistics
+	long countSparseChunk = 0;
+	private long [] countChunkLen; 
+	long compressed = 0;
+	long countTryRLE = 0;
+	long expanded = 0;
+	long highestStoredKey = -1;
+	long uncompressedLen = 0;
+	long compressedLen = 0;
+	
+	/**
+	 * A map that stores pairs of (OSM) IDs and short values identifying the
+	 * areas in which the object (node,way) with the ID occurs.
+	 *  
+	 * @param optimizeMem: true -> expect rather few IDs (sparse vector), 
+	 * false -> expect large number of nodes
+	 * 						
+	 */
 	SparseLong2ShortMapInline(boolean optimizeMem) {
 		if (optimizeMem)
-			method = Method.hashmap;
+			method = Method.sparsearray;
 		else 
-			method = Method.vector;
+			method = Method.array;
 		clear();
 
 	}
 
-	void arrayPush(short[] array, int index) {
-		for (int j = array.length - 1; j > index + MASK_SIZE; j--)
-			array[j] = array[j - 1];
-	}
-
-	void arrayCopyFill(short[] from, short[] to) {
-		int j = 0;
-		for (; j < from.length; j++)
-			to[j] = from[j];
-		for (; j < to.length; j++)
-			to[j] = unassigned;
-	}
-
-	short[] chunkAdd(short[] array, int index, short val) {
-		if (array[array.length - 1] != unassigned) {
-			if (array.length == 8 & poolIndex > 0)
-				pool[--poolIndex] = array; // move chunk back into the pool
-			--countChunkLen[array.length];
-			short tmp[] = new short[array.length + 4];
-			arrayCopyFill(array, tmp);
-			array = tmp;
-			++countChunkLen[array.length];
-		}
-		arrayPush(array, index);
-		array[index + MASK_SIZE] = val;
-		return array;
-	}
-
-	short[] chunkMake() {
-		short[] out;
-
-		if (pool[poolIndex] != null){
-			out = pool[poolIndex];
-			storeMask(0L, out);
-			pool[poolIndex] = null;
-			++poolIndex;
-			if (poolIndex >= POOL_SIZE){ 
-				// chunks from current pool are now all in use by the chunkmap. 
-				makeNewPool();
+	/**
+	 * Get the value from a (compressed) chunk
+	 * @param array: 
+	 * @param index: 
+	 * @return
+	 */
+	private short chunkGet(short[] array, int index) {
+		//assert index+MASK_SIZE < array.length;
+		if (array[MASK_SIZE] == RLE_FLAG){
+			short len;
+			int x = index;
+			for (int j=MASK_SIZE+1; j < array.length; j+=2){
+				len =  array[j];
+				x -= len;
+				if (x < 0) return array[j+1];
 			}
+			return unassigned; // should not happen
 		}
 		else
-			out = new short[8];
-		/* fill last for bytes , the first 4 bytes are used for chunkmask */
-		for (int j = out.length-1; j >= MASK_SIZE; j--)
-			out[j] = unassigned; 
-		++countChunkLen[out.length];
-		return out;
+			return array[index + MASK_SIZE];
 	}
 
-	void chunkSet(short[] array, int index, short val) {
-		array[index + MASK_SIZE] = val;
-	}
-
-	short chunkGet(short[] array, int index) {
-		assert index+MASK_SIZE < array.length;
-		return array[index + MASK_SIZE];
-	}
-
-
+	
 	/**
 	 * Count how many of the lowest X bits in mask are set
 	 * 
 	 * @return
 	 */
-	int countUnder(long mask, int lowest) {
+	private int countUnder(long mask, int lowest) {
 		return Fast.count(mask & ((1L << lowest) - 1));
+	}
+
+	/**
+	 * retrieve (compressed) chunk and expand it into the work buffer
+	 * @param array
+	 */
+	private void fillCurrentChunk(short [] array) {
+		long mask = extractMask(array);
+	
+		++expanded;
+		Arrays.fill(currentChunk, unassigned);
+		if (array[MASK_SIZE] == RLE_FLAG){
+			short ipos = MASK_SIZE+1;
+			short len = array[ipos++];
+			short val = array[ipos++];
+			int opos = 0;
+			while (len > 0){
+				while (len > 0){
+					if ((mask & 1L << opos) != 0){ 
+						currentChunk[opos] = val; 
+						--len;
+					}
+					++opos;
+				}
+				if (ipos+1 < array.length){
+					len = array[ipos++];
+					val = array[ipos++];
+				}
+				else len = -1;
+			}
+		}
+		else {
+			int ipos = MASK_SIZE;
+			for (int j=0; j<CHUNK_SIZE;j++) {
+				if ((mask & 1L<<j) != 0) 
+					currentChunk[j] = array[ipos++]; 
+			}
+			
+		}
+	}
+
+	/**
+	 * Try to use Run Length Encoding to compress the chunk stored in tmpWork. In most
+	 * cases this works very well because chunks often have only one 
+	 * or two distinct values.
+	 * @param maxlen: number of elements in the chunk. 
+	 * @return -1 if compression doesn't save space, else the number of elements in the 
+	 * compressed chunk stored in buffer RLEWork.
+	 */
+	private int chunkCompressRLE (int maxlen){
+		int opos = MASK_SIZE + 1;
+		++countTryRLE;
+        for (int i = MASK_SIZE; i < maxlen; i++) {
+            short runLength = 1;
+            while (i+1 < maxlen && tmpWork[i] == tmpWork[i+1]) {
+                runLength++;
+                i++;
+            }
+            if (opos+2 >= tmpWork.length) 
+            	return -1;
+            RLEWork[opos++] = runLength;
+            RLEWork[opos++] = tmpWork[i]; 
+        }
+        if (RLEWork[opos-1] == unassigned)
+        	opos -= 2;
+		while(opos % 4 != 0) 
+			RLEWork[opos++] = 0;
+        
+        if (opos < maxlen){
+        	RLEWork[MASK_SIZE] = RLE_FLAG;
+    		++compressed;
+        	return opos;
+        }
+        else 
+        	return -1;
+	}
+	/**
+	 * Try to compress the chunk in currentChunk and store it in the chunk vector.
+	 */
+	private void saveCurrentChunk(){
+		long mask = 0;
+		int RLELen = -1;
+		int opos = MASK_SIZE;
+		long elementMask = 1L;
+		short [] chunkToSave;
+		for (int j=0; j < CHUNK_SIZE; j++){
+			if (currentChunk[j] != unassigned) {
+				mask |= elementMask;
+				tmpWork[opos++] = currentChunk[j];
+			}
+			elementMask <<= 1;
+		}
+		while(opos % 4 != 0) 
+			tmpWork[opos++] = unassigned;
+		uncompressedLen += opos;
+		if (opos > 8)
+			RLELen =  chunkCompressRLE(opos);
+		if (RLELen > 0){
+			chunkToSave = RLEWork;
+			opos = RLELen;
+		}
+		else
+			chunkToSave = tmpWork;
+		compressedLen += opos;	
+		oldChunk = new short[opos];
+		System.arraycopy(chunkToSave, MASK_SIZE, oldChunk, MASK_SIZE, opos-MASK_SIZE);
+		storeMask(mask, oldChunk);
+		putChunk(oldChunkId,oldChunk);
+		++countChunkLen[oldChunk.length];
 	}
 
 	@Override
@@ -126,9 +241,19 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		long elementmask = 1L << chunkoffset;
 		return (chunkmask & elementmask) != 0;
 	}
-
+	
+	
 	@Override
-	public short put(long key, short val) {
+	public short put (long key, short val) {
+		return this._put(key, val, false);
+	}
+	
+	@Override
+	public short putIfAbsent (long key, short val) {
+		return this._put(key, val, true);
+	}
+	
+	public short _put(long key, short val, boolean putIfAbsent) {
 		if (val == unassigned) {
 			throw new IllegalArgumentException(
 					"Cannot store the value that is reserved as being unassigned. val="
@@ -142,35 +267,41 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 					"Cannot handle such key, is too high. key=" + key);
 		}
 
+		if (key > highestStoredKey)
+			highestStoredKey = key;
+		
 		int chunkid = (int) (key / CHUNK_SIZE);
 		int chunkoffset = (int) (key % CHUNK_SIZE);
-		short [] chunk = getChunk(chunkid);
-		if (chunk == null)
-			chunk = chunkMake();
-
-		long chunkmask = extractMask(chunk);
-
-		long elementmask = 1L << chunkoffset;
-		if ((chunkmask & elementmask) != 0) {
-			// Already in the array, find the offset and store.
-			short out = chunkGet(chunk,
-					countUnder(chunkmask, chunkoffset));
-			chunkSet(chunk, countUnder(chunkmask, chunkoffset), val);
-			// System.out.println("Returning found key "+out+" from put "+ key +
-			// " " + val);
+		short out;
+		if (oldChunkId == chunkid){
+			out = currentChunk[chunkoffset];
+			if (!putIfAbsent || out == unassigned) 
+				currentChunk[chunkoffset] = val;
 			return out;
-		} else {
-			size++;
-			// Not in the array. Time to insert.
-			int offset = countUnder(chunkmask, chunkoffset);
-			chunk = chunkAdd(chunk, offset, val);
-			chunkmask |= elementmask;
-			storeMask(chunkmask, chunk);
-			putChunk (chunkid, chunk);
-			return unassigned;
 		}
+		if (oldChunkId >= 0)
+			saveCurrentChunk();
+		
+		short [] chunk = getChunk(chunkid);
+		if (chunk == null){
+			size++;
+			Arrays.fill(currentChunk, unassigned);
+		}
+		else {
+			// this is the worst case: we have to modify
+			// a chunk that was already saved
+			fillCurrentChunk(chunk);
+			--countChunkLen[chunk.length];
+		}
+		out = currentChunk[chunkoffset];
+		oldChunkId = chunkid;
+		if (!putIfAbsent || out == unassigned) 
+			//return out;
+			currentChunk[chunkoffset] = val;
+		return out;
 	}
 
+	
 	@Override
 	public short get(long key) {
 		if (key >= MAX_KEY) {
@@ -179,61 +310,44 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		}
 
 		int chunkid = (int) (key / CHUNK_SIZE);
+		if (oldChunkId != chunkid && oldChunkId >= 0){
+			saveCurrentChunk();
+		}
+		int chunkoffset = (int) (key % CHUNK_SIZE);
+		
+		if (oldChunkId == chunkid)
+			 return currentChunk[chunkoffset];
+		oldChunkId = -1;
 		short [] chunk = getChunk(chunkid);
 		if (chunk == null) 
 			return unassigned;
 		long chunkmask = extractMask(chunk);
-		int chunkoffset = (int) key % CHUNK_SIZE;
 		long elementmask = 1L << chunkoffset;
+		short out;
 		if ((chunkmask & elementmask) == 0) {
-			return unassigned;
+			out = unassigned;
 		} else {
-			return chunkGet(chunk, countUnder(chunkmask, chunkoffset));
+			out = chunkGet(chunk, countUnder(chunkmask, chunkoffset));
 		}
+		return out;
 	}
 
 	@Override
 	public void clear() {
-		if (method == Method.hashmap) {
-			System.out.println("Allocating hashmap (Int2ObjectOpenHashMap) for chunk data"); 
-			chunkmap = new Int2ObjectOpenHashMap<short[]>(initsize);
-		}
-		else { 
-			capacity = (int) ((1L << 31) / CHUNK_SIZE); // OSM data already contains IDs > 1.500.000.000 in 2011 
-			initsize = capacity;
-			System.out.println("Allocating vector (ObjectArrayList) for to hold node IDs up to " + Utils.format(1L<<31));
+		capacity = (int) (INIT_SIZE / CHUNK_SIZE); // OSM data already contains IDs > 1.500.000.000 in year 2011 
+		
+		if (method == Method.array) {
+			System.out.println("Allocating chunk vector (ObjectArrayList) to hold node IDs up to " + Utils.format(INIT_SIZE));
 			chunkvector = new ObjectArrayList<short[]>();
 			chunkvector.size(1+capacity);
 		}
+		else { 
+			System.out.println("Allocating sparse chunk vector (ObjectArrayList) to hold node IDs up to " + Utils.format(INIT_SIZE));
+			topvector = new ObjectArrayList<short[][]>();
+			topvector.size((capacity/SPARSE_CHUNK_VECTOR_SIZE) + 1);
+		}
 		countChunkLen = new long[CHUNK_SIZE + MASK_SIZE + 1 ]; // used for statistics 
-		makeNewPool();
 		size = 0;
-	}
-
-	@Override
-	public short remove(long key) {
-		throw new UnsupportedOperationException("TODO: Implement");
-	}
-
-
-	@Override
-	public boolean containsKey(Object arg0) {
-		throw new UnsupportedOperationException("TODO: Implement");
-	}
-
-	@Override
-	public Short get(Object arg0) {
-		throw new UnsupportedOperationException("TODO: Implement");
-	}
-
-	@Override
-	public Short put(Long arg0, Short arg1) {
-		return put(arg0.intValue(), arg1.shortValue());
-	}
-
-	@Override
-	public Short remove(Object arg0) {
-		throw new UnsupportedOperationException("TODO: Implement");
 	}
 
 	@Override
@@ -251,61 +365,84 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		unassigned = arg0;
 	}
 
-	void resizeTo(int chunkid) {
+	private void resizeTo(int chunkid) {
 		if (chunkid <= capacity)
 			return;
 		capacity = chunkid + chunkid/8 + SIZE_INCR;
 		
 		if (capacity < 0 || capacity > 2000000000)
 			capacity = 2000000000;
-		
-		System.out.println("Resizing chunk data vector to hold IDs up to " + Utils.format((long) (1+capacity) * CHUNK_SIZE));
-		chunkvector.size(1+capacity);
+		if (method == Method.array){
+			System.out.println("Resizing chunk vector to hold IDs up to " + Utils.format((long) (1+capacity) * CHUNK_SIZE));
+			chunkvector.size(capacity + 1);
+		}
+		else {
+			System.out.println("Resizing top chunk vector to hold IDs up to " + Utils.format((long) (1+capacity) * CHUNK_SIZE));
+			topvector.size((capacity/SPARSE_CHUNK_VECTOR_SIZE) + 1);
+		}
 	}
  	
 	private short[] getChunk (int chunkid){
-		if (method == Method.hashmap)
-			return chunkmap.get(chunkid);
-		else {
-			if (chunkid <= 0 || chunkid >= chunkvector.size())
-				return null; 			
+		if (chunkid > capacity)
+			return null;
+		if (method == Method.array)
 			return chunkvector.get(chunkid);
+		else {
+			int topId = (chunkid/SPARSE_CHUNK_VECTOR_SIZE);
+			int offset = (chunkid%SPARSE_CHUNK_VECTOR_SIZE);
+			short[][] v = topvector.get(topId);
+			if (v == null) 
+				return null;	// chunk is not allocated
+			else {
+				return v[offset];
+			}				
 		}
 	}
 
 	private void putChunk (int chunkid, short[] chunk) {
-		if (method == Method.hashmap)
-			chunkmap.put(chunkid, chunk);
-		else {
-			if (chunkid > capacity)
-				resizeTo(chunkid);
+		if (chunkid > capacity)
+			resizeTo(chunkid);
+		if (method == Method.array)
 			chunkvector.set(chunkid, chunk);
+		else {
+			int topId = (chunkid / SPARSE_CHUNK_VECTOR_SIZE);
+			int offset = (chunkid % SPARSE_CHUNK_VECTOR_SIZE);
+			short[][] v = topvector.get(topId);
+			if (v == null){  
+				v = new short[SPARSE_CHUNK_VECTOR_SIZE][];
+				topvector.set(topId, v);
+				++countSparseChunk;
+			}
+			v[offset] = chunk;
 		}
 	}
 
-	// store the long mask value in the 1st 4 chunk elements
+	/**
+	 *  Store the mask value (a long) in the 1st MASK_SIZE chunk elements.
+	 * @param mask
+	 * @param chunk
+	 */
 	private void storeMask (long mask, short[] chunk) {
 		// store chunkmask in chunk
 		long tmp = mask;
 		for (int i = 0; i < MASK_SIZE; i++){ 
 			chunk[i] = (short) (tmp & 0xffffL);
-			tmp = (tmp >> 16);
+			tmp >>= 16;
 		}
 	}
-	// extract the long mask value in the 1st 4 chunk elements
+	/** 
+	 * Extract the (long) mask value from the 1st MASK_SIZE chunk elements.
+	 * @param chunk
+	 * @return the mask
+	 */
 	private long extractMask(short [] chunk){
 		long mask = 0;
 		for (int i = 0; i < MASK_SIZE; i++) {
 			mask |= (chunk[3-i] & 0xffff);
 			if (i <= 2)
-				mask = (mask << 16);
+				mask <<= 16;
 		}
 		return mask;
-	}
-
-	private void makeNewPool(){
-		pool = new short[POOL_SIZE][8];
-		poolIndex = 0;
 	}
 
 	@Override
@@ -315,16 +452,38 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		for (int i=8; i <=CHUNK_SIZE + MASK_SIZE; i+=4) {
 			usedChunks += countChunkLen[i];
 			if (msgLevel > 0) { 
-				//System.out.println("type-" + i + " chunks: " + Utils.format(countChunkLen[i]) + " (Bytes: " + Utils.format(countChunkLen[i] * (12+i*2)));
+				System.out.println("Length-" + i + " chunks: " + Utils.format(countChunkLen[i]) + " (Bytes: " + Utils.format(countChunkLen[i] * (12+i*2)) + ")");
 			}
 		}
-		
-		pctusage = Math.round((float)usedChunks*100/initsize) ;
-		if (method == Method.hashmap) { 
-			System.out.println("Chunk map details: used " + Utils.format(chunkmap.size()) + " (~ " + pctusage + "%) of the estimated " + Utils.format(initsize) + " entries." );
+		if (msgLevel > 0 & uncompressedLen > 0){
+			System.out.print("RLE compresion info: compressed / uncompressed size / ratio: " + 
+					Utils.format(compressedLen) + " / "+ 
+					Utils.format(uncompressedLen) + " / "+
+					Utils.format(Math.round(100-(float) (compressedLen*100/uncompressedLen))) + "%");
+			if (expanded > 0 )
+				System.out.print(", times fully expanded: " + Utils.format(expanded));
+			System.out.println();
 		}
-		else {
-			System.out.println("Chunk vector details: used " + Utils.format(usedChunks) + " of " + Utils.format(initsize) + " allocated entries (~ " + pctusage + "%)");
+		if (method == Method.array){  
+			pctusage = Math.min(100, 1 + Math.round((float)usedChunks*100/(INIT_SIZE/CHUNK_SIZE)));
+			
+			System.out.println("Chunk vector details: used " + Utils.format(usedChunks) + " of " + Utils.format(INIT_SIZE/CHUNK_SIZE) + " allocated entries (< " + pctusage + "%)");
+		}
+		else{ 
+			pctusage = Math.min(100, 1 + Math.round((float)usedChunks*100/(countSparseChunk*SPARSE_CHUNK_VECTOR_SIZE))) ;
+			System.out.println("Sparse chunk vector details: used " + Utils.format(usedChunks) + " of " + Utils.format(countSparseChunk*SPARSE_CHUNK_VECTOR_SIZE) + " allocated entries (< " + pctusage + "%)");
+		}
+
+		if (msgLevel > 1){
+			for (int i = 0;i < capacity; i++) {
+				short [] c = getChunk (i);
+				if (c != null){
+					System.out.print("c(" +  i + ")={");
+					for (int j=MASK_SIZE; j < c.length; j++) 
+						System.out.print(" " + c[j]);
+					System.out.println("}");
+				}
+			}
 		}
 	}
 }

@@ -31,8 +31,9 @@ public class BinaryMapParser extends BinaryParser {
 	@Override
 	protected void parseDense(Osmformat.DenseNodes nodes) {
 		long last_id = 0, last_lat = 0, last_lon = 0;
-		int j = 0; 
-		for (int i=0 ; i < nodes.getIdCount(); i++) {
+		int j = 0;
+		int maxi = nodes.getIdCount();
+		for (int i=0 ; i < maxi; i++) {
 			long lat = nodes.getLat(i)+last_lat; last_lat = lat;
 			long lon = nodes.getLon(i)+last_lon; last_lon = lon;
 			long id =  nodes.getId(i)+last_id; last_id = id;
