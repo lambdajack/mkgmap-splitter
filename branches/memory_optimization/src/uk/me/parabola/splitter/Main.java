@@ -101,7 +101,7 @@ public class Main {
 	private int maxThreads;
 	// The output type
 	private boolean pbfOutput;
-	// The memory usage strategy. Default is: favor speed by using ArrayList instead of HashMap  
+	// The memory usage strategy. Default is: favor speed by using one large ArrayList instead of sparse vector.
 	private boolean optimizeMem = false;
 	
 	public static void main(String[] args) {
@@ -251,9 +251,9 @@ public class Main {
 		fileOutputDir = new File(outputDir == null? DEFAULT_DIR: outputDir);
 
 		maxAreasPerPass = params.getMaxAreas();
-		if (maxAreasPerPass < 1 || maxAreasPerPass > 1024) {
-			System.err.println("The --max-areas parameter must be a value between 1 and 1024. Resetting to 1024.");
-			maxAreasPerPass = 1024;
+		if (maxAreasPerPass < 1 || maxAreasPerPass > 2048) {
+			System.err.println("The --max-areas parameter must be a value between 1 and 2048. Resetting to 2048.");
+			maxAreasPerPass = 2048;
 		}
 		kmlOutputFile = params.getWriteKml();
 		densityMap = !params.isLegacyMode();

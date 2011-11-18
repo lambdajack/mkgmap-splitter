@@ -28,7 +28,7 @@ public interface SplitterParams {
 	@Option(description = "A default description to give to each area.")
 	String getDescription();
 
-	@Option(defaultValue = "1024", description = "The maximum number of areas to process in a single pass. More areas require more memory. 1-1024.")
+	@Option(defaultValue = "255", description = "The maximum number of areas to process in a single pass. More areas require more memory. 1-2048.")
 	int getMaxAreas();
 
 	@Option(defaultValue = "2000", description = "Nodes/ways/rels that fall outside an area will still be included if they are within this many map units.")
@@ -73,7 +73,7 @@ public interface SplitterParams {
 	@Option(defaultValue = "unset", description = "The output type, either pbf or xml.")
 	String getOutput();
 
-	@Option(description = "Store data in HashMap instead of array. Use this option when heap is small.")
+	@Option(description = "Store data in a sparse vector instead of a vector. Use this option when input contains very high node IDs.")
 	boolean isOptimizeMem();
 
 }
