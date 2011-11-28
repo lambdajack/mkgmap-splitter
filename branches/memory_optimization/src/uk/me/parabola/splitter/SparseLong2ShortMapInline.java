@@ -4,15 +4,19 @@ import it.unimi.dsi.bits.Fast;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.Arrays;
+import java.util.HashMap;
 
 /**
  * SparseLong2ShortMapInline implements SparseLong2ShortMapFunction 
- * optimized for low memory requirements and 
- * inserts in sequential order (lowest indexes first).
+ * optimized for low memory requirements and inserts in sequential order.
  *
  * Inspired by SparseInt2ShortMapInline.
- * Key values are limited to a maximum of 2^37 - 1.
  * 
+ * Two variants are implemented:  
+ * three-tier uses a HashMap to address large vectors which address chunks
+ * four-tier uses a HashMap to not-so-large vectors which address small 
+ * vectors which address chunks. This consumes less memory when e.g. only 
+ * data for a country like Germany is processed. 
  * A chunk stores up to CHUNK_SIZE values and a bit-mask. The bit-mask is used
  * to separate used and unused entries in the chunk. Thus, the chunk length 
  * depends on the number of used entries, not on the highest used entry.
@@ -37,43 +41,47 @@ import java.util.Arrays;
  * instead of 152 bytes for the worst case (counting also the padding bytes).
  */
 public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
-	static final int CHUNK_SIZE = 64; // MUST be <= 64.
-	static final long MAX_KEY = (long) (CHUNK_SIZE * (long) Integer.MIN_VALUE * -1L) - 1;  // 2^37 - 1 
-	static final int MASK_SIZE = 4;	// number of chunk elements used to store mask
-	static final int ONE_VALUE_CHUNK_SIZE = MASK_SIZE+2; 
-	static final int SIZE_INCR = 1024;
-	static final long INIT_SIZE = 1L<<31; // maximum ID that can be saved without re-sizing 
-
+	static final int CHUNK_SIZE = 64; 
+	static final long TOP_ID_BITS       = 0xffffffffff000000L;  // the part of the key that is saved in the HashMap
+	static final long CHUNK_OFFSET_BITS = CHUNK_SIZE-1;  		// the part of the key that contains the offset in the chunk
+	static final long OLD_CHUNK_ID_BITS = ~CHUNK_OFFSET_BITS;	// if this part of the key changes, a different chunk is used
+	static final long CHUNK_ID_BITS     = ~TOP_ID_BITS; 
+	
+	static final long INVALID_CHUNK_ID = 1L; // must not be divisible by CHUNK_SIZE 
+	static final int LARGE_VECTOR_SIZE = (int)(CHUNK_ID_BITS/ CHUNK_SIZE + 1); // number of entries addressed by one topMap entry (3-tier)
 	static final int SPARSE_CHUNK_VECTOR_SIZE = 16; 
+	static final int SPARSE_VECTOR_SIZE = LARGE_VECTOR_SIZE / SPARSE_CHUNK_VECTOR_SIZE; // number of entries addressed by one sparseTopMap entry (4-tier)
 
-	enum Method {array, sparsearray};
+	static final int MASK_SIZE = 4;	// number of chunk elements needed to store the chunk mask
+	static final int ONE_VALUE_CHUNK_SIZE = MASK_SIZE+2; 
+
+
+	enum Method {three_tier, four_tier};
 	private final Method method; 
 
-	private ObjectArrayList<short[]> chunkvector;	// directly addresses chunks
-	private ObjectArrayList<short[][]> topvector;	// addresses vectors of references of chunks 
-	int [] paddedLen = new int[CHUNK_SIZE+MASK_SIZE];
+	private HashMap<Long, ObjectArrayList<short[]> > topMap;
+	private HashMap<Long, ObjectArrayList<short[][]> > sparseTopMap;
+	private int [] paddedLen = new int[CHUNK_SIZE+MASK_SIZE];
 
-	int size;
+	private int size;
 
-	int oldChunkId = -1;
-	short [] oldChunk = null; 
-	short [] currentChunk = new short[CHUNK_SIZE+MASK_SIZE]; 
-	short [] tmpWork = new short[CHUNK_SIZE+MASK_SIZE]; 
-	short [] RLEWork = new short[CHUNK_SIZE+MASK_SIZE];
+	private long oldChunkId = INVALID_CHUNK_ID; 
+	private short [] oldChunk = null; 
+	private short [] currentChunk = new short[CHUNK_SIZE+MASK_SIZE]; 
+	private short [] tmpWork = new short[CHUNK_SIZE+MASK_SIZE]; 
+	private short [] RLEWork = new short[CHUNK_SIZE+MASK_SIZE];
 
 	/** What to return on unassigned indices */
-	short unassigned = -1;
-	int capacity = 0; // available chunks in vector 
+	private short unassigned = -1;
 
 	// for statistics
-	long countSparseChunk = 0;
+	private long countSparseChunk = 0;
 	private long [] countChunkLen; 
-	long compressed = 0;
-	long countTryRLE = 0;
-	long expanded = 0;
-	long highestStoredKey = -1;
-	long uncompressedLen = 0;
-	long compressedLen = 0;
+	private long compressed = 0;
+	private long countTryRLE = 0;
+	private long expanded = 0;
+	private long uncompressedLen = 0;
+	private long compressedLen = 0;
 
 	/**
 	 * A map that stores pairs of (OSM) IDs and short values identifying the
@@ -85,9 +93,9 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 	 */
 	SparseLong2ShortMapInline(boolean optimizeMem) {
 		if (optimizeMem)
-			method = Method.sparsearray;
+			method = Method.four_tier;
 		else 
-			method = Method.array;
+			method = Method.three_tier;
 		// good chunk length is a value that gives (12+ 2 * chunk.length) % 8 == 0
 		// that means chunk.length values 6,10,14,..,66 are nice
 		for (int i=0; i<paddedLen.length; i++){
@@ -173,8 +181,6 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 						--len;
 					}
 					++opos;
-						if (opos == 68)
-							opos = opos;
 				}
 				if (ipos+1 < array.length){
 					len = array[ipos++];
@@ -287,16 +293,11 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 
 	@Override
 	public boolean containsKey(long key) {
-		if (key >= MAX_KEY) {
-			throw new IllegalArgumentException(
-					"Cannot handle such key, is too high. key=" + key);
-		}
-		int chunkid = (int) (key / CHUNK_SIZE);
-		short [] chunk = getChunk(chunkid);
+		short [] chunk = getChunk(key);
 		if (chunk == null) 
 			return false;
 		long chunkmask = extractMask(chunk);
-		int chunkoffset = (int) (key % CHUNK_SIZE);
+		int chunkoffset = (int) (key & CHUNK_OFFSET_BITS);
 
 		long elementmask = 1L << chunkoffset;
 		return (chunkmask & elementmask) != 0;
@@ -304,45 +305,22 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 
 
 	@Override
-	public short put (long key, short val) {
-		return this._put(key, val, false);
-	}
-
-	@Override
-	public short putIfAbsent (long key, short val) {
-		return this._put(key, val, true);
-	}
-
-	public short _put(long key, short val, boolean putIfAbsent) {
+	public short put(long key, short val) {
+		long chunkId = key & OLD_CHUNK_ID_BITS;
 		if (val == unassigned) {
-			throw new IllegalArgumentException(
-					"Cannot store the value that is reserved as being unassigned. val="
-					+ val);
+			throw new IllegalArgumentException("Cannot store the value that is reserved as being unassigned. val=" + val);
 		}
-		if (key < 0) {
-			throw new IllegalArgumentException("Cannot store the negative key,"
-					+ key);
-		} else if (key >= MAX_KEY) {
-			throw new IllegalArgumentException(
-					"Cannot handle such key, is too high. key=" + key);
-		}
-
-		if (key > highestStoredKey)
-			highestStoredKey = key;
-
-		int chunkid = (int) (key / CHUNK_SIZE);
-		int chunkoffset = (int) (key % CHUNK_SIZE);
+		int chunkoffset = (int) (key & CHUNK_OFFSET_BITS);
 		short out;
-		if (oldChunkId == chunkid){
+		if (oldChunkId == chunkId){
 			out = currentChunk[chunkoffset];
-			if (!putIfAbsent || out == unassigned) 
 				currentChunk[chunkoffset] = val;
 			return out;
 		}
-		if (oldChunkId >= 0)
+		if (oldChunkId != INVALID_CHUNK_ID)
 			saveCurrentChunk();
 
-		short [] chunk = getChunk(chunkid);
+		short [] chunk = getChunk(key);
 		if (chunk == null){
 			size++;
 			Arrays.fill(currentChunk, unassigned);
@@ -354,9 +332,7 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 			--countChunkLen[chunk.length];
 		}
 		out = currentChunk[chunkoffset];
-		oldChunkId = chunkid;
-		if (!putIfAbsent || out == unassigned) 
-			//return out;
+		oldChunkId = chunkId;
 			currentChunk[chunkoffset] = val;
 		return out;
 	}
@@ -364,21 +340,16 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 
 	@Override
 	public short get(long key) {
-		if (key >= MAX_KEY) {
-			throw new IllegalArgumentException(
-					"Cannot handle such key, is too high. key=" + key);
-		}
-
-		int chunkid = (int) (key / CHUNK_SIZE);
-		if (oldChunkId != chunkid && oldChunkId >= 0){
+		long chunkId = key & OLD_CHUNK_ID_BITS;
+		if (oldChunkId != chunkId && oldChunkId != INVALID_CHUNK_ID){
 			saveCurrentChunk();
 		}
-		int chunkoffset = (int) (key % CHUNK_SIZE);
+		int chunkoffset = (int) (key & CHUNK_OFFSET_BITS);
 
-		if (oldChunkId == chunkid)
+		if (oldChunkId == chunkId)
 			 return currentChunk[chunkoffset];
-		oldChunkId = -1;
-		short [] chunk = getChunk(chunkid);
+		oldChunkId = INVALID_CHUNK_ID;
+		short [] chunk = getChunk(key);
 		if (chunk == null) 
 			return unassigned;
 		long chunkmask = extractMask(chunk);
@@ -394,17 +365,13 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 
 	@Override
 	public void clear() {
-		capacity = (int) (INIT_SIZE / CHUNK_SIZE); // OSM data already contains IDs > 1.500.000.000 in year 2011 
-
-		if (method == Method.array) {
-			System.out.println("Allocating chunk vector (ObjectArrayList) to hold node IDs up to " + Utils.format(INIT_SIZE));
-			chunkvector = new ObjectArrayList<short[]>();
-			chunkvector.size(1+capacity);
+		if (method == Method.three_tier){
+			System.out.println("Allocating three-tier structure to save area info (HashMap->vector->chunkvector)");
+			topMap = new HashMap<Long, ObjectArrayList<short[]> >();
 		}
-		else { 
-			System.out.println("Allocating sparse chunk vector (ObjectArrayList) to hold node IDs up to " + Utils.format(INIT_SIZE));
-			topvector = new ObjectArrayList<short[][]>();
-			topvector.size((capacity/SPARSE_CHUNK_VECTOR_SIZE) + 1);
+		else{
+			System.out.println("Allocating four-tier structure to save area info (HashMap->vector->vector->chunkvector)");
+			sparseTopMap = new HashMap<Long, ObjectArrayList<short[][]> >();
 		}
 		countChunkLen = new long[CHUNK_SIZE + MASK_SIZE + 1 ]; // used for statistics
 		size = 0;
@@ -425,55 +392,62 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 		unassigned = arg0;
 	}
 
-	private void resizeTo(int chunkid) {
-		if (chunkid <= capacity)
-			return;
-		capacity = chunkid + chunkid/8 + SIZE_INCR;
-
-		if (capacity < 0 || capacity > 2000000000)
-			capacity = 2000000000;
-		if (method == Method.array){
-			System.out.println("Resizing chunk vector to hold IDs up to " + Utils.format((long) (1+capacity) * CHUNK_SIZE));
-			chunkvector.size(capacity + 1);
+	private short[] getChunk (long key){
+		long topID = key & TOP_ID_BITS;
+		int chunkid = (int) (key & CHUNK_ID_BITS) / CHUNK_SIZE;
+		if (method == Method.three_tier) {
+			ObjectArrayList<short[]>  t = topMap.get(topID);
+			if (t == null){
+				return null;
+		}
+			return t.get(chunkid);
 		}
 		else {
-			System.out.println("Resizing top chunk vector to hold IDs up to " + Utils.format((long) (1+capacity) * CHUNK_SIZE));
-			topvector.size((capacity/SPARSE_CHUNK_VECTOR_SIZE) + 1);
+			ObjectArrayList<short[][]>  t = sparseTopMap.get(topID);
+			if (t == null){
+				return null;
+		}
+			
+			int midId = (chunkid / SPARSE_CHUNK_VECTOR_SIZE);
+			int offset = (chunkid % SPARSE_CHUNK_VECTOR_SIZE);
+			short[][] v = t.get(midId);
+			if (v == null){
+				return null;
+	}
+			return v[offset]; 			
 		}
 	}
 
-	private short[] getChunk (int chunkid){
-		if (chunkid > capacity)
-			return null;
-		if (method == Method.array)
-			return chunkvector.get(chunkid);
-		else {
-			int topId = (chunkid / SPARSE_CHUNK_VECTOR_SIZE);
-			int offset = (chunkid % SPARSE_CHUNK_VECTOR_SIZE);
-			short[][] v = topvector.get(topId);
-			if (v == null) 
-				return null;	// chunk is not allocated
-			else {
-				return v[offset];
-			}				
+	private void putChunk (long key, short[] chunk) {
+		long topID = key & TOP_ID_BITS;
+		int chunkid = (int) (key & CHUNK_ID_BITS) / CHUNK_SIZE;
+		if ( method == Method.three_tier) {
+			ObjectArrayList<short[]>  largeVector = topMap.get(topID);
+			if (largeVector == null){
+				largeVector = new ObjectArrayList<short[]>();
+				largeVector.size(LARGE_VECTOR_SIZE);
+				topMap.put(topID, largeVector);
 		}
+			largeVector.set(chunkid, chunk);
 	}
-
-	private void putChunk (int chunkid, short[] chunk) {
-		if (chunkid > capacity)
-			resizeTo(chunkid);
-		if (method == Method.array)
-			chunkvector.set(chunkid, chunk);
 		else {
-			int topId = (chunkid / SPARSE_CHUNK_VECTOR_SIZE);
+			ObjectArrayList<short[][]>  midSizeVector = sparseTopMap.get(topID);
+			if (midSizeVector == null){
+				midSizeVector = new ObjectArrayList<short[][]>();
+				midSizeVector.size(SPARSE_VECTOR_SIZE);
+				sparseTopMap.put(topID, midSizeVector);
+			}
+			
+			
+			int midId = (chunkid / SPARSE_CHUNK_VECTOR_SIZE);
 			int offset = (chunkid % SPARSE_CHUNK_VECTOR_SIZE);
-			short[][] v = topvector.get(topId);
+			short[][] v = midSizeVector.get(midId);
 			if (v == null){  
 				v = new short[SPARSE_CHUNK_VECTOR_SIZE][];
-				topvector.set(topId, v);
+				midSizeVector.set(midId, v);
 				++countSparseChunk;
 			}
-			v[offset] = chunk;
+			v[offset] = chunk; 			
 		}
 	}
 
@@ -530,16 +504,15 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 				System.out.print(", times fully expanded: " + Utils.format(expanded));
 			System.out.println();
 		}
-		if (method == Method.array){  
-			pctusage = Math.min(100, 1 + Math.round((float)usedChunks*100/(INIT_SIZE/CHUNK_SIZE)));
-
-			System.out.println("Chunk vector details: used " + Utils.format(usedChunks) + " of " + Utils.format(INIT_SIZE/CHUNK_SIZE) + " allocated entries (< " + pctusage + "%)");
+		if (method == Method.three_tier){
+			pctusage = Math.min(100, 1 + Math.round((float)usedChunks*100/(topMap.size()*LARGE_VECTOR_SIZE))) ;
+			System.out.println("HashMap details: HashMap entries: " + topMap.size() + ", used " + Utils.format(usedChunks) + " of " + Utils.format(topMap.size()*(CHUNK_ID_BITS/ CHUNK_SIZE +1)) + " allocated entries (< " + pctusage + "%)");
 		}
-		else{ 
+		else {
 			pctusage = Math.min(100, 1 + Math.round((float)usedChunks*100/(countSparseChunk*SPARSE_CHUNK_VECTOR_SIZE))) ;
-			System.out.println("Sparse chunk vector details: used " + Utils.format(usedChunks) + " of " + Utils.format(countSparseChunk*SPARSE_CHUNK_VECTOR_SIZE) + " allocated entries (< " + pctusage + "%)");
+			System.out.println("HashMap details: HashMap entries: " + sparseTopMap.size() + ", used " + Utils.format(usedChunks) + " of " + Utils.format(countSparseChunk*SPARSE_CHUNK_VECTOR_SIZE) + " allocated entries (< " + pctusage + "%)"); 			
 		}
-
+		/*
 		if (msgLevel > 1){
 			for (i = 0;i < capacity; i++) {
 				short [] c = getChunk (i);
@@ -551,6 +524,7 @@ public class SparseLong2ShortMapInline implements SparseLong2ShortMapFunction{
 				}
 			}
 		}
+		 */
 	}
 }
 

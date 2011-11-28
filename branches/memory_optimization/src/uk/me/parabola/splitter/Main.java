@@ -422,6 +422,8 @@ public class Main {
 				System.out.printf("ERROR: file %s was not found\n", filename);
 			} catch (XmlPullParserException e) {
 				System.out.printf("ERROR: file %s is not a valid OSM XML file\n", filename);
+			} catch (IllegalArgumentException e) {
+				System.out.printf("ERROR: file %s contains unexpected data\n", filename);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}

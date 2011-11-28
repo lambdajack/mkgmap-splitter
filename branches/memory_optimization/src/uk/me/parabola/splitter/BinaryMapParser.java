@@ -33,16 +33,19 @@ public class BinaryMapParser extends BinaryParser {
 		long last_id = 0, last_lat = 0, last_lon = 0;
 		int j = 0;
 		int maxi = nodes.getIdCount();
+		boolean isStartNodeOnly = processor.isStartNodeOnly();
+		Node tmp = new Node();
 		for (int i=0 ; i < maxi; i++) {
 			long lat = nodes.getLat(i)+last_lat; last_lat = lat;
 			long lon = nodes.getLon(i)+last_lon; last_lon = lon;
 			long id =  nodes.getId(i)+last_id; last_id = id;
 			double latf = parseLat(lat), lonf = parseLon(lon);
 
-			Node tmp = new Node();
+			if (!isStartNodeOnly) 
+				tmp = new Node();
 			tmp.set(id, latf, lonf);
 
-			if (!processor.isStartNodeOnly()) {
+			if (!isStartNodeOnly) {
 				if (nodes.getKeysValsCount() > 0) {
 					while (nodes.getKeysVals(j) != 0) {
 						int keyid = nodes.getKeysVals(j++);
@@ -60,6 +63,7 @@ public class BinaryMapParser extends BinaryParser {
 
 	@Override
 	protected void parseNodes(List<Osmformat.Node> nodes) {
+		if (nodes.size() == 0) return;
 		for (Osmformat.Node i : nodes) {
 			Node tmp = new Node();
 			for (int j=0 ; j < i.getKeysCount(); j++)
@@ -119,6 +123,7 @@ public class BinaryMapParser extends BinaryParser {
 
 	@Override
 	protected void parseRelations(List<Osmformat.Relation> rels) {
+		if (rels.size() == 0) return;
 		for (Osmformat.Relation i : rels) {
 			Relation tmp = new Relation();
 			for (int j=0 ; j < i.getKeysCount(); j++)

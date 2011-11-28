@@ -34,6 +34,7 @@ public class Element {
 
 	public void reset() {
 		this.id = 0;
+		if (tags != null)
 		tags.clear();
 		//tags = null;
 	}
