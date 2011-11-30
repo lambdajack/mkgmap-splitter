@@ -73,7 +73,4 @@ public interface SplitterParams {
 	@Option(defaultValue = "unset", description = "The output type, either pbf or xml.")
 	String getOutput();
 
-	@Option(description = "Store data in a sparse vector instead of a vector. Use this option when input contains very high node IDs.")
-	boolean isOptimizeMem();
-
 }

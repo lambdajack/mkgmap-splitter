@@ -101,8 +101,6 @@ public class Main {
 	private int maxThreads;
 	// The output type
 	private boolean pbfOutput;
-	// The memory usage strategy. Default is: favor speed by using one large ArrayList instead of sparse vector.
-	private boolean optimizeMem = false;
 	
 	public static void main(String[] args) {
 
@@ -261,7 +259,6 @@ public class Main {
 			System.out.println("WARNING: Specifying --legacy-split will cause the first stage of the split to take much more memory! This option is considered deprecated and will be removed in a future build.");
 		}
 
-		optimizeMem = params.isOptimizeMem();
 		maxThreads = params.getMaxThreads().getCount();
 		filenames = parser.getAdditionalParams();
 		
@@ -368,7 +365,7 @@ public class Main {
 							" areas (" + areas.get(i * areasPerPass).getMapId() + " to " +
 							areas.get(i * areasPerPass + currentWriters.length - 1).getMapId() + ')');
 
-			MapProcessor processor = new SplitProcessor(currentWriters, maxThreads, optimizeMem);
+			MapProcessor processor = new SplitProcessor(currentWriters, maxThreads);
 			processMap(processor);
 			//System.out.println("Wrote " + Utils.format(mapReader.getNodeCount()) + " nodes, " +
 			//				Utils.format(mapReader.getWayCount()) + " ways, " +

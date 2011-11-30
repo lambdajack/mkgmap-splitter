@@ -56,13 +56,13 @@ class SplitProcessor implements MapProcessor {
 	private long countCoords = 0;
 	private long countWays = 0;
 	
-	SplitProcessor(OSMWriter[] writers, int maxThreads, boolean optimizeMem) {
+	SplitProcessor(OSMWriter[] writers, int maxThreads) {
 		this.writers = writers;
 		usedWriters = new BitSet();
 		writerDictionary = new WriterDictionary();
 		this.grid = new Grid();
-		this.coords = new SparseLong2ShortMapInline(optimizeMem);
-		this.ways = new SparseLong2ShortMapInline(optimizeMem);
+		this.coords = new SparseLong2ShortMapInline();
+		this.ways   = new SparseLong2ShortMapInline();
 		this.coords.defaultReturnValue(unassigned);
 		this.ways.defaultReturnValue(unassigned);
 		this.maxThreads = maxThreads;
@@ -236,7 +236,6 @@ class SplitProcessor implements MapProcessor {
 				usedWriters.set(n);
 				++countWriters;
 				lastUsedWriter = (short) n;
-				
 				if (maxThreads > 1) {
 					addToWorkingQueue(n, currentNode);
 				} else {
