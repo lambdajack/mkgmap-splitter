@@ -90,7 +90,7 @@ public class BinaryMapParser extends BinaryParser {
 			if (wayCount > 0) {
 				long x = (numways + wayCount) % WAY_STATUS_UPDATE_THRESHOLD;
 				// get and report the id that hits the threshold value 
-				if (x <= numways) {
+				if (x < numways) {
 					x = numways - x;
 					Osmformat.Way w = ways.get((int)(x - 1));
 					System.out.println(Utils.format(wayCount+x) + " ways processed... id=" + w.getId());
