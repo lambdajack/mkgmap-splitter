@@ -563,11 +563,9 @@ public class Main {
 		OSMWriter[] allWriters = new OSMWriter[areas.size()];
 		Map<String, byte[]> wellKnownTagKeys = null;
 		Map<String, byte[]> wellKnownTagVals = null;
-		Map<String, Long> unknownTagKeys = null;
 		if ("o5m".equals(outputType)){
 			wellKnownTagKeys = new HashMap<String, byte[]>();
 			wellKnownTagVals = new HashMap<String, byte[]>();
-			unknownTagKeys = new ConcurrentHashMap<String, Long>();
 			
 			String[] tagKeys = { "1", "1outer", "1inner", // relation specific  
 					// 52 most often used keys (taken from taginfo 2012-12-19)
@@ -671,12 +669,6 @@ public class Main {
 			processMap(processor); 
 		}
 		System.out.println("Distribution pass(es) took " + (System.currentTimeMillis() - startDistPass) + " ms");
-		for (Map.Entry<String,Long> entry: unknownTagKeys.entrySet()){
-			if (entry.getValue() > 10000){
-				System.out.format("%12d %s\n", entry.getValue(),entry.getKey() );
-			}
-		}
-		
 		dataStorer.finish();
 		
 	}
