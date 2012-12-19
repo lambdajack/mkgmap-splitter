@@ -31,7 +31,6 @@ import it.unimi.dsi.fastutil.shorts.ShortArrayList;
 
 import java.awt.Point;
 import java.awt.Rectangle;
-import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -51,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -136,6 +136,7 @@ public class Main {
 	private final HashMap<String, long[]> skipArrayMap = new HashMap<String, long[]>();
 
 	private String stopAfter;
+
 	
 	public static void main(String[] args) {
 
@@ -560,13 +561,52 @@ public class Main {
 	 */
 	private void writeAreas(List<Area> areas) throws IOException, XmlPullParserException {
 		OSMWriter[] allWriters = new OSMWriter[areas.size()];
+		Map<String, byte[]> wellKnownTagKeys = null;
+		Map<String, byte[]> wellKnownTagVals = null;
+		Map<String, Long> unknownTagKeys = null;
+		if ("o5m".equals(outputType)){
+			wellKnownTagKeys = new HashMap<String, byte[]>();
+			wellKnownTagVals = new HashMap<String, byte[]>();
+			unknownTagKeys = new ConcurrentHashMap<String, Long>();
+			
+			String[] tagKeys = { "1", "1outer", "1inner", // relation specific  
+					// 52 most often used keys (taken from taginfo 2012-12-19)
+					"source", "building",
+					"highway", "name", "addr:housenumber", "addr:street",
+					"tiger:cfcc", "tiger:county", "tiger:source", "tiger:tlid",
+					"tiger:reviewed", "addr:city", "tiger:separated",
+					"tiger:upload_uuid", "natural", "addr:country",
+					"addr:postcode", "attribution", "waterway", "wall",
+					"tiger:name_base", "landuse", "tiger:name_type", "surface",
+					"amenity", "oneway", "power", "yh:WIDTH", "tiger:zip_left",
+					"3dshapes:ggmodelk", "yh:STRUCTURE", "yh:TYPE", "note",
+					"yh:TOTYUMONO", "yh:WIDTH_RANK", "ref", "tiger:zip_right",
+					"access", "source_ref", "is_in", "note:ja", "lanes",
+					"KSJ2:curve_id", "place", "layer", "maxspeed", "tracktype",
+					"osak:identifier", "KSJ2:long", "KSJ2:lat",
+					"KSJ2:coordinate" };
+
+			for (String s:tagKeys){
+				wellKnownTagKeys.put(s, s.getBytes("UTF-8"));
+			}
+			
+			String[] tagVals = { "yes", "no", "residential", "water", "tower",
+					"footway", "Bing", "PGS", "private", "stream", "service",
+					"house", "unclassified", "track", "traffic_signals","restaurant","entrance"};
+			
+			for (String s:tagVals){
+				wellKnownTagVals.put(s, s.getBytes("UTF-8"));
+			}
+			
+		}
+		
 		for (int j = 0; j < allWriters.length; j++) {
 			Area area = areas.get(j);
 			OSMWriter w;
 			if ("pbf".equals(outputType)) 
 				w = new BinaryMapWriter(area, fileOutputDir, area.getMapId(), overlapAmount );
 			else if ("o5m".equals(outputType))
-				w = new O5mMapWriter(area, fileOutputDir, area.getMapId(), overlapAmount );
+				w = new O5mMapWriter(area, fileOutputDir, area.getMapId(), overlapAmount, wellKnownTagKeys,wellKnownTagVals);
 			else if ("simulate".equals(outputType))
 				w = new PseudoOSMWriter(area, area.getMapId(), false, overlapAmount);
 			else 
@@ -630,7 +670,13 @@ public class Main {
 
 			processMap(processor); 
 		}
-		System.out.println("Distribution pass(es) took " + (System.currentTimeMillis() - startDistPass) + " ms"); 
+		System.out.println("Distribution pass(es) took " + (System.currentTimeMillis() - startDistPass) + " ms");
+		for (Map.Entry<String,Long> entry: unknownTagKeys.entrySet()){
+			if (entry.getValue() > 10000){
+				System.out.format("%12d %s\n", entry.getValue(),entry.getKey() );
+			}
+		}
+		
 		dataStorer.finish();
 		
 	}
@@ -1195,4 +1241,5 @@ public class Main {
 		return true;
 	}
 
+	
 }
