@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -511,7 +510,10 @@ public class Main {
 					dataStorer, writerOffset, numWritersThisPass,
 					problemWaysThisPart, problemRelsThisPart);
 			
-			processMap(processor); 
+			boolean done = false;
+			while (!done){
+				done = processMap(processor);
+			}
 			System.out.println("Problem-list-generator pass " + (pass+1) + " for partition " + partition+ " took " + (System.currentTimeMillis() - startThisPass) + " ms"); 
 		}
 		//writeProblemList("problem-candidates-partition-" + partition + ".txt", problemWaysThisPart, problemRelsThisPart);
@@ -627,15 +629,21 @@ public class Main {
 			problemRels = null;
 			problemWays = null;
 			
-			int pass = 0;
 			boolean done = false;
+			long startThisPhase = System.currentTimeMillis();
+			int prevPhase = -1; 
 			while(!done){
-				long startThisPass = System.currentTimeMillis();
-				++pass;
-				System.out.println("-----------------------------------");
-				System.out.println("Starting multi-tile analyses pass " + pass);
+				int phase = multiProcessor.getPhase();
+				if (prevPhase != phase){
+					startThisPhase = System.currentTimeMillis();
+					System.out.println("-----------------------------------");
+					System.out.println("Executing multi-tile analyses phase " + phase);
+				}
 				done = processMap(multiProcessor);
-				System.out.println("Multi-tile analyses pass " + pass + " took " + (System.currentTimeMillis() - startThisPass) + " ms"); 
+				prevPhase = phase;
+				if (done || (phase != multiProcessor.getPhase())){
+					System.out.println("Multi-tile analyses phase " + phase + " took " + (System.currentTimeMillis() - startThisPhase) + " ms");
+				}
 			}
 
 			System.out.println("-----------------------------------");

@@ -12,6 +12,7 @@
  */ 
 package uk.me.parabola.splitter;
 
+import java.util.BitSet;
 import java.util.HashMap;
 
 /** A simple partly BitSet implementation optimized for memory 
@@ -19,68 +20,58 @@ import java.util.HashMap;
  * that the stored values build groups like e.g. the OSM node IDs. 
  * 
  * author GerdP */ 
-public class SparseBitSet{
-	static final int MASK = 63; 						
-	static final long TOP_ID_MASK = ~MASK;  
+public class SparseClusteredBitSet{
+	static final int CHUNK_MASK = 2048-1; // seems to be good value for OSM node IDs 						
+	static final long TOP_ID_MASK = ~CHUNK_MASK;  
 	private static final int TOP_ID_SHIFT = Long.numberOfTrailingZeros(TOP_ID_MASK);  
 
-	private HashMap<Long,Long> topMap = new HashMap<Long,Long>();
+	private HashMap<Long,BitSet> topMap = new HashMap<Long, BitSet>();
 	private int setBits;
   
   public void set(long key){
       long topId = key >> TOP_ID_SHIFT;
-      int bitPos =(int)(key & MASK);
-      long val = 1L << (bitPos-1);  
-      Long chunk = topMap.get(topId);
-      if (chunk != null){
-    	  if ((chunk & val) != 0)
+      int bitPos =(int)(key & CHUNK_MASK);
+        
+      BitSet chunk = topMap.get(topId);
+      if (chunk == null){
+    	  chunk = new BitSet();
+    	  topMap.put(topId, chunk);
+      } else {
+    	  if (chunk.get(bitPos))
     		  return;
-          val |= chunk;
       }
-      topMap.put(topId, val); 
+      chunk.set(bitPos);
       ++setBits;
   }
 
   public void clear(long key){
-      long topId = key >> TOP_ID_SHIFT;
-      Long chunk = topMap.get(topId);
+	  long topId = key >> TOP_ID_SHIFT;
+      BitSet chunk = topMap.get(topId);
       if (chunk == null)
           return;
-      int bitPos =(int)(key & MASK);
-      long val = 1L << (bitPos-1);  
-      if ((chunk & val) == 0)
-    	  return;
-      chunk &= ~val;
-      if (chunk == 0)
+      int bitPos =(int)(key & CHUNK_MASK);
+      
+	  if (!chunk.get(bitPos))
+		  return;
+	  chunk.clear(bitPos);
+      if (chunk.isEmpty())
     	  topMap.remove(topId);
-      else 
-    	  topMap.put(topId, chunk);
       --setBits;
   }
   
   public boolean get(long key){
-      long topId = key >> TOP_ID_SHIFT;
-      Long chunk = topMap.get(topId);
+	  long topId = key >> TOP_ID_SHIFT;
+      BitSet chunk = topMap.get(topId);
       if (chunk == null)
           return false;
-      int bitPos =(int)(key & MASK);
-      long val = 1L << (bitPos-1);  
-      return (val & chunk) != 0; 
+      int bitPos =(int)(key & CHUNK_MASK);
+      return chunk.get(bitPos); 
   }
 
   public void clear(){
 	  topMap.clear();
 	  setBits = 0;
   }
-  
-  /**
-   * calculate estimated required heap
-   * @return
-   */
-  public int bytes(){
-	  return topMap.size() * 40;
-  }
-  
   
   public int cardinality(){
 	  return setBits;

@@ -33,19 +33,19 @@ import java.util.Map.Entry;
  * to find out what details are needed in each tile.
  */
 class MultiTileProcessor extends AbstractMapProcessor {
-	private final static int PASS1_RELS_ONLY = 1;
-	private final static int PASS2_WAYS_ONLY = 2;
-	private final static int PASS3_NODES_AND_WAYS = 3;
-	private final static int PASS4_WAYS_ONLY = 4;
+	private final static int PHASE1_RELS_ONLY = 1;
+	private final static int PHASE2_WAYS_ONLY = 2;
+	private final static int PHASE3_NODES_AND_WAYS = 3;
+	private final static int PHASE4_WAYS_ONLY = 4;
 	
 	private final static byte MEM_NODE_TYPE = 1;
 	private final static byte MEM_WAY_TYPE  = 2;
 	private final static byte MEM_REL_TYPE  = 3;
 	private final static byte MEM_INVALID_TYPE = -1;
 	private final static int PROBLEM_WIDTH = Utils.toMapUnit(180.0);
-	private final static String[] NAME_TAGS = {"name","name:en","int_name"}; 
+	private final static String[] NAME_TAGS = {"name","name:en","int_name","note"}; 
 	
-	private int pass = PASS1_RELS_ONLY;
+	private int phase = PHASE1_RELS_ONLY;
 	private final DataStorer dataStorer;
 	private final WriterDictionaryInt multiTileDictionary;
 	private Map<Long, MTRelation> relMap = new LinkedHashMap<Long, MTRelation>();
@@ -56,14 +56,16 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	private int [] nodeLats;
 	private SparseBitSet problemRels = new SparseBitSet();
 	private SparseBitSet neededWays = new SparseBitSet();
-	private SparseBitSet neededNodes = new SparseBitSet();
+	private SparseClusteredBitSet neededNodes = new SparseClusteredBitSet();
 	private Map<Long, Rectangle> wayBboxMap;
 	private SparseBitSet mpWays = new SparseBitSet();
 	private Map<Long, JoinedWay> mpWayEndNodesMap;
 	private final BitSet workWriterSet;
 	private long lastCoordId = Long.MIN_VALUE;
 	private int foundWays;
-	private int visitId = 0;
+	private int neededNodesCount; 
+	private int visitId;
+	
 
 	MultiTileProcessor(DataStorer dataStorer, LongArrayList problemWayList, LongArrayList problemRelList) {
 		this.dataStorer = dataStorer;
@@ -81,47 +83,56 @@ class MultiTileProcessor extends AbstractMapProcessor {
 
 	@Override
 	public boolean skipTags() {
-		if (pass == PASS1_RELS_ONLY)
+		if (phase == PHASE1_RELS_ONLY)
 			return false;
 		return true;
 	}
 
 	@Override
 	public boolean skipNodes() {
-		if (pass == PASS3_NODES_AND_WAYS)
+		if (phase == PHASE3_NODES_AND_WAYS)
 			return false;
 		return true;
 	}
 	@Override
 	public boolean skipWays() {
-		if (pass == PASS1_RELS_ONLY)
+		if (phase == PHASE1_RELS_ONLY)
 			return true;
 		return false;
 	}
 	@Override
 	public boolean skipRels() {
-		if (pass == PASS1_RELS_ONLY)
+		if (phase == PHASE1_RELS_ONLY)
 			return false;
 		return true;
 	}
 
 	@Override
+	public int getPhase() {
+		return phase;
+	}
+	
+	@Override
 	public void processNode(Node node) {
-		if (pass == PASS3_NODES_AND_WAYS){
-			if (neededNodes.get(node.getId()))
+		if (phase == PHASE3_NODES_AND_WAYS){
+			if (neededNodes.get(node.getId())){
 				storeCoord(node);
+				// return memory to GC
+				neededNodes.clear(node.getId());
+			}
 		}
 	}
 
 	@Override
 	public void processWay(Way way) {
-		if (pass == PASS2_WAYS_ONLY){
+		if (phase == PHASE2_WAYS_ONLY){
 			if (!neededWays.get(way.getId()))
 				return;
 			for (long id : way.getRefs()) {
 				neededNodes.set(id);
 			}
 			if (mpWays.get(way.getId())){
+				mpWays.clear(way.getId());
 				int numRefs = way.getRefs().size();
 				if (numRefs >= 2){
 					JoinedWay joinedWay = new JoinedWay(way.getRefs().get(0), way.getRefs().get(numRefs-1));
@@ -131,7 +142,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			}
 			foundWays++;
 		}
-		else if (pass == PASS3_NODES_AND_WAYS){
+		else if (phase == PHASE3_NODES_AND_WAYS){
 			if (!neededWays.get(way.getId()))
 				return;
 			// calculate the bbox
@@ -163,7 +174,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			}
 
 		}
-		else if (pass == PASS4_WAYS_ONLY){
+		else if (phase == PHASE4_WAYS_ONLY){
 			// propagate the ways writers to all nodes 
 			if (!neededWays.get(way.getId()))
 				return;
@@ -179,7 +190,11 @@ class MultiTileProcessor extends AbstractMapProcessor {
 
 	@Override
 	public void processRelation(Relation rel) {
-		if (pass == PASS1_RELS_ONLY){
+		// TODO: we store all relations here, no matter how many are needed. Another approach would be to store 
+		// the rels in the problem list and read again until all sub rels of these problem rels are found or
+		// known as missing. This would require a few more read passes for relations, but can help if this phase
+		// starts to be a bottleneck.
+		if (phase == PHASE1_RELS_ONLY){
 			MTRelation myRel = new MTRelation(rel);
 			relMap.put(myRel.getId(), myRel);
 		}
@@ -187,13 +202,14 @@ class MultiTileProcessor extends AbstractMapProcessor {
 
 	@Override
 	public boolean endMap() {
-		if (pass == PASS1_RELS_ONLY){
-			stats("Finished collecting problem rations.");
+		if (phase == PHASE1_RELS_ONLY){
+			stats("Finished collecting relations.");
+			Utils.printMem();
 			System.out.println("starting to resolve relations containing problem relations ...");
 			// add all ways and nodes of problem rels so that we collect the coordinates
 			markProblemMembers();
 			// we want to see the parent rels, but not all children of all parents 
-			markParentRels();
+			//markParentRels();
 			// free memory for rels that are not causing any trouble
 			Iterator<Entry<Long, MTRelation>> it = relMap.entrySet().iterator();
 			while (it.hasNext()) {
@@ -202,34 +218,39 @@ class MultiTileProcessor extends AbstractMapProcessor {
 					it.remove(); 
 				}
 			}
+			problemRels = null;
 			// reallocate to the needed size
 			relMap = new LinkedHashMap<Long, MultiTileProcessor.MTRelation>(relMap);
 			mpWayEndNodesMap = new HashMap<Long, MultiTileProcessor.JoinedWay>(mpWays.cardinality());
-			System.out.println("Finished adding parents and members of problem relations to problem lists.");
-			problemRels = null;
+			//System.out.println("Finished adding parents and members of problem relations to problem lists.");
+			System.out.println("Finished adding members of problem relations to problem lists.");
 			stats("starting to collect ids of needed way nodes ...");
-			++pass;
+			++phase;
 		}
-		else if (pass == PASS2_WAYS_ONLY){
+		else if (phase == PHASE2_WAYS_ONLY){
 			stats("Finished collecting problem ways.");
+			neededNodesCount = neededNodes.cardinality();
 			// critical part: we have to allocate possibly large arrays here
-			nodeWriterMap = new Long2IntClosedMap("node", neededNodes.cardinality(), WriterDictionaryInt.UNASSIGNED);
+			nodeWriterMap = new Long2IntClosedMap("node", neededNodesCount, WriterDictionaryInt.UNASSIGNED);
 			wayWriterMap = new Long2IntClosedMap("way", foundWays, WriterDictionaryInt.UNASSIGNED);
 			wayBboxMap = new HashMap<Long, Rectangle>(foundWays);
 			dataStorer.setWriterMap(DataStorer.NODE_TYPE, nodeWriterMap);
 			dataStorer.setWriterMap(DataStorer.WAY_TYPE, wayWriterMap);
-			nodeLons = new int[neededNodes.cardinality()];
-			nodeLats = new int[neededNodes.cardinality()];
+			nodeLons = new int[neededNodesCount];
+			nodeLats = new int[neededNodesCount];
 
 			System.out.println("Found " + Utils.format(foundWays) + " of " + Utils.format(neededWays.cardinality()) + " needed ways.");
 			System.out.println("Found " + Utils.format(mpWayEndNodesMap.size()) + " of " + Utils.format(mpWays.cardinality()) + " multipolygon ways.");
-			stats("Starting to collect coordinates for " + Utils.format(neededNodes.cardinality()) + " needed nodes.");
-			++pass;
+			stats("Starting to collect coordinates for " + Utils.format(neededNodesCount) + " needed nodes.");
+			Utils.printMem();
+			++phase;
 		}
-		else if (pass == PASS3_NODES_AND_WAYS){
-			System.out.println("Found " + Util.format(nodeWriterMap.size()) + " of " + Utils.format(neededNodes.cardinality()) + " needed nodes.");
-			System.out.println("Calculating tiles for problem relations...");
+		else if (phase == PHASE3_NODES_AND_WAYS){
+			System.out.println("Found " + Util.format(nodeWriterMap.size()) + " of " + Utils.format(neededNodesCount) + " needed nodes.");
+			Utils.printMem();
+			mpWays = null;
 			neededNodes = null;
+			System.out.println("Calculating tiles for problem relations...");
 			calcWritersOfRelWaysAndNodes();
 			// return coordinate memory to GC
 			nodeLats = null;
@@ -256,9 +277,9 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			relMap = null;
 			dataStorer.setWriterMap(DataStorer.REL_TYPE, relWriterMap);
 			stats("Making sure that needed way nodes of relations are written to the correct tiles...");
-			++pass;
+			++phase;
 		}
-		else if (pass == PASS4_WAYS_ONLY){
+		else if (phase == PHASE4_WAYS_ONLY){
 			stats("Finished processing problem lists.");
 			return true; 
 		}
@@ -323,6 +344,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	/**
 	 * Mark the parents of problem relations as problem relations.
 	 */
+	/*
 	private void markParentRels(){
 		while (true){
 			boolean changed = false;
@@ -346,7 +368,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				return;
 		}
 	}
-
+	 */
 	/**
 	 * Calculate the writers for each relation based on the 
 	 * nodes and ways. 
@@ -547,17 +569,19 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 * @param msg
 	 */
 	private void stats(String msg){
-		System.out.println("Stats for " + getClass().getSimpleName() + " pass " + pass);
+		System.out.println("Stats for " + getClass().getSimpleName() + " pass " + phase);
 		if (problemRels != null)
-			System.out.println("  SparseBitSet problemRels contains now " + Utils.format(problemRels.cardinality()) + " Ids.");
+			System.out.println("  " + problemRels.getClass().getSimpleName() + " problemRels contains now " + Utils.format(problemRels.cardinality()) + " Ids.");
 		if (neededWays != null)
-			System.out.println("  SparseBitSet neededWays contains now " + Utils.format(neededWays.cardinality())+ " Ids.");
+			System.out.println("  " + neededWays.getClass().getSimpleName() + " neededWays contains now " + Utils.format(neededWays.cardinality())+ " Ids.");
+		if (mpWays != null)
+			System.out.println("  " + mpWays.getClass().getSimpleName() + " mpWays contains now " + Utils.format(mpWays.cardinality())+ " Ids.");
 		if (neededNodes != null)
-			System.out.println("  SparseBitSet neededNodes contains now " + Utils.format(neededNodes.cardinality())+ " Ids.");
+			System.out.println("  " + neededNodes.getClass().getSimpleName() + " neededNodes contains now " + Utils.format(neededNodes.cardinality())+ " Ids.");
 		if (relMap != null)
 			System.out.println("  Number of stored relations: " + Utils.format(relMap.size()));
 		System.out.println("  Number of stored tile combinations in multiTileDictionary: " + Utils.format(multiTileDictionary.size()));
-		if (pass == PASS4_WAYS_ONLY)
+		if (phase == PHASE4_WAYS_ONLY)
 			dataStorer.stats("  ");
 		System.out.println("Status: " + msg);
 			
@@ -919,7 +943,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			for (int i = 0; i<numMembers; i++){
 				Member mem = rel.getMembers().get(i);
 				memRefs[i] = mem.getRef(); 
-				memRoles[i] = mem.getRole();
+				memRoles[i] = mem.getRole().intern();
 				if ("node".equals(mem.getType())){
 					memTypes[i] = MEM_NODE_TYPE;
 					flags |= HAS_NODES;
