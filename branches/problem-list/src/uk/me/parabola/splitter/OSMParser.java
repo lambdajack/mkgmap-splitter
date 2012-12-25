@@ -181,6 +181,8 @@ class OSMParser extends AbstractXppParser implements MapReader {
 			String type = getAttr("type");
 			long id = getLongAttr("ref");
 			String role = getAttr("role");
+			if (role == null)
+				role = "";
 			if ("node".equals(type))
 				currentRelation.addMember("node", id, role);
 			else if ("way".equals(type))

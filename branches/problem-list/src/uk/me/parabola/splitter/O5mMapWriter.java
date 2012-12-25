@@ -369,27 +369,28 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		}  // end   enter new string table element data
 	}
 
-	int stw__getref(int stri) {
+	int stw__getref(final int stri) {
 		int strie;  // index of last occurrence 
 		int ref; 
 
-		strie= stri; 
+		strie= stri;
+		int pos = stri;
 		do{
 			// compare the string (pair) with the tab entry 
-			byte[] tb1 = stw__tab[0][stri];
+			byte[] tb1 = stw__tab[0][pos];
 			if (Arrays.equals(tb1, s1Bytes)){
 				// first string equal to first string in table
-				byte[] tb2 = stw__tab[1][stri];
+				byte[] tb2 = stw__tab[1][pos];
 				if (Arrays.equals(tb2, s2Bytes)){
 					// second string equal to second string in table
-					ref = stw__tabi - stri;
+					ref = stw__tabi - pos;
 					if (ref <= 0)
 						ref += STW__TAB_MAX;
 					return ref;
 				}
 			}
-			stri = stw__tabnext[stri]; 
-		} while(stri!=strie); 
+			pos = stw__tabnext[pos]; 
+		} while(pos!=strie); 
 		return -1;
 	}
 	

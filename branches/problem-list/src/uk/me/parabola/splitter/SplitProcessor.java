@@ -267,7 +267,7 @@ class SplitProcessor extends AbstractMapProcessor {
 			usedWriters.clear();
 		if (writerCandidates != null){
 			for (int i = 0; i < writerCandidates.l.size(); i++) {
-				int n = writerCandidates.l.get(i);
+				int n = writerCandidates.l.getShort(i);
 				if (n < writerOffset || n > lastWriter)
 					continue;
 				OSMWriter w = writers[n];

@@ -15,14 +15,13 @@ package uk.me.parabola.splitter;
 import uk.me.parabola.splitter.Relation.Member;
 
 import it.unimi.dsi.Util;
+import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
-
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +37,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	private final static int PHASE3_NODES_AND_WAYS = 3;
 	private final static int PHASE4_WAYS_ONLY = 4;
 	
+	private final boolean addParentRels = false;
 	private final static byte MEM_NODE_TYPE = 1;
 	private final static byte MEM_WAY_TYPE  = 2;
 	private final static byte MEM_REL_TYPE  = 3;
@@ -48,7 +48,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	private int phase = PHASE1_RELS_ONLY;
 	private final DataStorer dataStorer;
 	private final WriterDictionaryInt multiTileDictionary;
-	private Map<Long, MTRelation> relMap = new LinkedHashMap<Long, MTRelation>();
+	private Long2ObjectLinkedOpenHashMap<MTRelation> relMap = new Long2ObjectLinkedOpenHashMap<MultiTileProcessor.MTRelation>();
 	private Long2IntClosedMapFunction nodeWriterMap;
 	private Long2IntClosedMapFunction wayWriterMap;
 	private Long2IntClosedMapFunction relWriterMap;
@@ -56,14 +56,16 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	private int [] nodeLats;
 	private SparseBitSet problemRels = new SparseBitSet();
 	private SparseBitSet neededWays = new SparseBitSet();
-	private SparseClusteredBitSet neededNodes = new SparseClusteredBitSet();
-	private Map<Long, Rectangle> wayBboxMap;
+	private SparseBitSet neededNodes = new SparseBitSet();
+	private OSMId2ObjectMap<Rectangle> wayBboxMap;
 	private SparseBitSet mpWays = new SparseBitSet();
-	private Map<Long, JoinedWay> mpWayEndNodesMap;
+	private OSMId2ObjectMap<JoinedWay> mpWayEndNodesMap;
 	private final BitSet workWriterSet;
 	private long lastCoordId = Long.MIN_VALUE;
 	private int foundWays;
 	private int neededNodesCount; 
+	private int neededWaysCount; 
+	private int neededMpWaysCount; 
 	private int visitId;
 	
 
@@ -133,9 +135,10 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			}
 			if (mpWays.get(way.getId())){
 				mpWays.clear(way.getId());
+				
 				int numRefs = way.getRefs().size();
 				if (numRefs >= 2){
-					JoinedWay joinedWay = new JoinedWay(way.getRefs().get(0), way.getRefs().get(numRefs-1));
+					JoinedWay joinedWay = new JoinedWay(way.getRefs().getLong(0), way.getRefs().getLong(numRefs-1));
 					mpWayEndNodesMap.put(way.getId(), joinedWay);
 					
 				}
@@ -192,8 +195,8 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	public void processRelation(Relation rel) {
 		// TODO: we store all relations here, no matter how many are needed. Another approach would be to store 
 		// the rels in the problem list and read again until all sub rels of these problem rels are found or
-		// known as missing. This would require a few more read passes for relations, but can help if this phase
-		// starts to be a bottleneck.
+		// known as missing. This can require many more read passes for relations, but can help if this phase
+		// starts to be a memory bottleneck.
 		if (phase == PHASE1_RELS_ONLY){
 			MTRelation myRel = new MTRelation(rel);
 			relMap.put(myRel.getId(), myRel);
@@ -208,8 +211,10 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			System.out.println("starting to resolve relations containing problem relations ...");
 			// add all ways and nodes of problem rels so that we collect the coordinates
 			markProblemMembers();
-			// we want to see the parent rels, but not all children of all parents 
-			//markParentRels();
+			if (addParentRels){
+				// we want to see the parent rels, but not all children of all parents
+				markParentRels();
+			}
 			// free memory for rels that are not causing any trouble
 			Iterator<Entry<Long, MTRelation>> it = relMap.entrySet().iterator();
 			while (it.hasNext()) {
@@ -220,11 +225,13 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			}
 			problemRels = null;
 			// reallocate to the needed size
-			relMap = new LinkedHashMap<Long, MultiTileProcessor.MTRelation>(relMap);
-			mpWayEndNodesMap = new HashMap<Long, MultiTileProcessor.JoinedWay>(mpWays.cardinality());
+			relMap = new Long2ObjectLinkedOpenHashMap<MultiTileProcessor.MTRelation>(relMap);
+			mpWayEndNodesMap = new OSMId2ObjectMap<MultiTileProcessor.JoinedWay>();
 			//System.out.println("Finished adding parents and members of problem relations to problem lists.");
 			System.out.println("Finished adding members of problem relations to problem lists.");
 			stats("starting to collect ids of needed way nodes ...");
+			neededMpWaysCount = mpWays.cardinality();
+			neededWaysCount = neededWays.cardinality();
 			++phase;
 		}
 		else if (phase == PHASE2_WAYS_ONLY){
@@ -233,14 +240,14 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			// critical part: we have to allocate possibly large arrays here
 			nodeWriterMap = new Long2IntClosedMap("node", neededNodesCount, WriterDictionaryInt.UNASSIGNED);
 			wayWriterMap = new Long2IntClosedMap("way", foundWays, WriterDictionaryInt.UNASSIGNED);
-			wayBboxMap = new HashMap<Long, Rectangle>(foundWays);
+			wayBboxMap = new OSMId2ObjectMap<Rectangle>();
 			dataStorer.setWriterMap(DataStorer.NODE_TYPE, nodeWriterMap);
 			dataStorer.setWriterMap(DataStorer.WAY_TYPE, wayWriterMap);
 			nodeLons = new int[neededNodesCount];
 			nodeLats = new int[neededNodesCount];
 
-			System.out.println("Found " + Utils.format(foundWays) + " of " + Utils.format(neededWays.cardinality()) + " needed ways.");
-			System.out.println("Found " + Utils.format(mpWayEndNodesMap.size()) + " of " + Utils.format(mpWays.cardinality()) + " multipolygon ways.");
+			System.out.println("Found " + Utils.format(foundWays) + " of " + Utils.format(neededWaysCount) + " needed ways.");
+			System.out.println("Found " + Utils.format(mpWayEndNodesMap.size()) + " of " + Utils.format(neededMpWaysCount) + " needed multipolygon ways.");
 			stats("Starting to collect coordinates for " + Utils.format(neededNodesCount) + " needed nodes.");
 			Utils.printMem();
 			++phase;
@@ -290,7 +297,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 * Mark all members of given problem relations as problem cases. 
 	 */
 	private void markProblemMembers() {
-		LongArrayList visited = new LongArrayList();
+		ArrayList<MTRelation> visited = new ArrayList<MultiTileProcessor.MTRelation>();
 		for (MTRelation rel: relMap.values()){
 			if (!problemRels.get(rel.getId()))
 				continue;
@@ -309,7 +316,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 * @param visited 
 	 * @return
 	 */
-	private void MarkNeededMembers(MTRelation rel, int depth, LongArrayList visited){
+	private void MarkNeededMembers(MTRelation rel, int depth, ArrayList<MTRelation> visited){
 		if (rel.getVisitId() == visitId)
 			return;
 		rel.setVisitId(visitId);
@@ -329,14 +336,16 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				neededNodes.set(memId);
 			else if (memType == MEM_REL_TYPE){
 				MTRelation subRel = relMap.get(memId);
-				if (subRel != null && subRel.getVisitId() != visitId){
+				if (subRel == null)
+					continue;
+				if (subRel.getVisitId() == visitId)
+					loopAction(rel, subRel, visited);
+				else {
 					problemRels.set(memId);
-					visited.add(memId);
+					visited.add(subRel);
 					MarkNeededMembers(subRel, depth+1, visited);
 					visited.remove(visited.size()-1);
 				}
-				else
-					loopAction(rel, memId, visited);
 			} 
 		}
 	}
@@ -344,7 +353,6 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	/**
 	 * Mark the parents of problem relations as problem relations.
 	 */
-	/*
 	private void markParentRels(){
 		while (true){
 			boolean changed = false;
@@ -368,7 +376,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				return;
 		}
 	}
-	 */
+	
 	/**
 	 * Calculate the writers for each relation based on the 
 	 * nodes and ways. 
@@ -418,7 +426,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 */
 	private void calcWritersOfMultiPolygonRels() {
 		// recurse thru sub relations
-		LongArrayList visited = new LongArrayList();
+		ArrayList<MTRelation> visited = new ArrayList<MultiTileProcessor.MTRelation>();
 		
 		for (MTRelation rel: relMap.values()){
 			BitSet relWriters = new BitSet();
@@ -442,7 +450,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 */
 	private void mergeRelMemWriters() {
 		// or combine the writers of sub-relations with the parent relation 
-		LongArrayList visited = new LongArrayList();
+		ArrayList<MTRelation> visited = new ArrayList<MultiTileProcessor.MTRelation>();
 		for (MTRelation rel: relMap.values()){
 			incVisitID();
 			visited.clear();
@@ -516,7 +524,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 * @param depth used to detect loops 
 	 * @return
 	 */
-	private void orSubRelWriters(MTRelation rel, int depth, LongArrayList visited ){
+	private void orSubRelWriters(MTRelation rel, int depth, ArrayList<MTRelation> visited ){
 		if (rel.getVisitId() == visitId)
 			return;
 		rel.setVisitId(visitId);
@@ -537,9 +545,9 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				if (subRel == null)
 					continue;
 				if (subRel.getVisitId() == visitId)
-					loopAction(rel, memId, visited);
+					loopAction(rel, subRel, visited);
 				else {
-					visited.add(rel.getId());
+					visited.add(rel);
 					orSubRelWriters(subRel, depth+1, visited);
 					visited.remove(visited.size()-1);
 					int memWriterIdx = subRel.getMultiTileWriterIndex();
@@ -653,7 +661,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 		OSMWriter[] writers = dataStorer.getWriterDictionary().getWriters();
 		boolean foundWriter = false;
 		for (int i = 0; i < writerCandidates.l.size(); i++) {
-			int n = writerCandidates.l.get(i);
+			int n = writerCandidates.l.getShort(i);
 			OSMWriter w = writers[n];
 			boolean found = (writerCandidates.testNeeded) ? w.coordsBelongToThisArea(mapLat, mapLon) : true;
 			foundWriter |= found;
@@ -786,11 +794,26 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	/*
 	 * Report a loop in a relation 
 	 */
-	void loopAction(MTRelation rel, long memId, LongArrayList visited){
-			if (rel.isOnLoop() == false && visited.contains(memId)){
-				System.out.println("Loop in relation. Members of the loop: " + visited.toString());
-				rel.markOnLoop();
+	void loopAction(MTRelation rel, MTRelation subRel, ArrayList<MTRelation> visited){
+		if (subRel.isOnLoop())
+			return; // don't complain again
+		if (rel.getId() == subRel.getId()){
+			System.out.println("Loop in relation " + rel.getId() +  ": Contains itself as sub relation.");
+			rel.markOnLoop();
+		}
+		else if (visited.contains(rel)){
+			subRel.markOnLoop();
+			StringBuilder sb = new StringBuilder("Loop in relation " + subRel.getId() + ". Loop contains relation(s): "); 
+			for (MTRelation r: visited){
+				sb.append(r.getId());
+				sb.append(' ');
+				r.markOnLoop();
 			}
+			System.out.println(sb);
+		} 
+		else {
+			System.out.println("Duplicate sub relation in relation " + rel.getId() +  ". Already looked at member " + subRel.getId() + "." );
+		}
 	}
 
 	/**
@@ -809,6 +832,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				wayMembers.add(memId);
 			}
 		}
+		boolean complainedAboutSize = false;
 		Rectangle mpBbox = null;
 		boolean hasMissingWays = false;
 		while (wayMembers.size() > 0){
@@ -867,7 +891,10 @@ class MultiTileProcessor extends AbstractMapProcessor {
 								mpBbox.add(wayBbox);
 						}
 						if (mpBbox.x < 0 && mpBbox.getMaxX() > 0 && mpBbox.width >= PROBLEM_WIDTH){
-							System.out.println("rel crosses -180/180: " + rel.getId());
+							if (complainedAboutSize == false){
+								System.out.println("rel crosses -180/180: " + rel.getId());
+								complainedAboutSize = true;
+							}
 						}
 					}
 					if (joinedWays[0] == joinedWays[1]){
@@ -900,7 +927,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	 */
 	class JoinedWay{
 		long startNode, endNode;
-		public JoinedWay(Long startNode, Long endNode) {
+		public JoinedWay(long startNode, long endNode) {
 			this.startNode = startNode;
 			this.endNode = endNode;
 		}
@@ -992,7 +1019,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				name = "?";
 		}
 		
-		public Long getId() {
+		public long getId() {
 			return id;
 		}
 		public boolean isOnLoop() {

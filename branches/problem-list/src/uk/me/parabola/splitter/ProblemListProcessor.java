@@ -132,7 +132,7 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		if (writerCandidates.l.size() > 1)
 			writerSet.clear();
 		for (int i = 0; i < writerCandidates.l.size(); i++) {
-			int n = writerCandidates.l.get(i);
+			int n = writerCandidates.l.getShort(i);
 			if (n < writerOffset || n > lastWriter)
 				continue;
 

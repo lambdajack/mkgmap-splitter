@@ -77,9 +77,8 @@ public class Main {
 	// The starting map ID.
 	private int mapId;
 
-	// The amount in map units that tiles overlap (note that the final img's will not overlap
-	// but the input files do).
-	private int overlapAmount;
+	// The amount in map units that tiles overlap. The default is overwritten depending on user settings.
+	private int overlapAmount = -1;
 
 	// A threshold value that is used when no split-file is given. Splitting is done so that
 	// no tile has more than maxNodes nodes inside the bounding box of the tile.
@@ -135,7 +134,6 @@ public class Main {
 	private final HashMap<String, long[]> skipArrayMap = new HashMap<String, long[]>();
 
 	private String stopAfter;
-
 	
 	public static void main(String[] args) {
 
@@ -278,7 +276,23 @@ public class Main {
 			Object value = entry.getValue();
 			System.out.println(name + '=' + (value == null ? "" : value));
 		}
-
+		filenames = parser.getAdditionalParams();
+		if (filenames.isEmpty()){
+			System.out.println("No file name(s) given, will try to read from stdin." );
+		} else {
+			boolean filesOK = true;
+			for (String fileName: filenames){
+				File f = new File(fileName);
+				if (f.exists() == false || f.isFile() == false || f.canRead() == false){
+					filesOK = false;
+					System.out.println("File doesn't exist or is not a readable file:" + fileName );
+				}
+			}
+			if (!filesOK){
+				System.out.println("Make sure that option parameters start with -- " );
+				System.exit(-1);
+			}
+		}
 		mapId = params.getMapid();
 		maxNodes = params.getMaxNodes();
 		description = params.getDescription();
@@ -309,20 +323,38 @@ public class Main {
 		kmlOutputFile = params.getWriteKml();
 
 		maxThreads = params.getMaxThreads().getCount();
-		filenames = parser.getAdditionalParams();
 		
 		problemFile = params.getProblemFile();
 		if (problemFile != null){
 			if (!readProblemIds(problemFile))
 				System.exit(-1);
 		}
+		String splitFile = params.getSplitFile();
+		if (splitFile != null) {
+			File f = new File(splitFile);
+			if (f.exists() == false || f.isFile() == false || f.canRead() == false){
+				System.out.println("Split-file doesn't exist or is not readable: " + splitFile);
+				System.exit(-1);
+			}
+		}
+		
 		keepComplete = params.isKeepComplete();
 		if (mixed && (keepComplete || problemFile != null)){
 			System.err.println("--mixed=true is not supported in combination with --keep-complete=true or --problem-file.");
 			System.err.println("Please use e.g. osomosis to sort the data in the input file(s)");
 			System.exit(-1);
 		}
-		overlapAmount = params.getOverlap();
+		
+		String overlap = params.getOverlap();
+		if ("auto".equals(overlap) == false){
+			try{
+				overlapAmount = Integer.valueOf(overlap);
+			} 
+			catch (NumberFormatException e){
+				System.err.println("Error: --overlap=" + overlap + " is not is not a valid option.");
+				System.exit(-1);
+			}
+		}
 		
 		if (keepComplete){
 			if (filenames.size() > 1){
@@ -349,7 +381,7 @@ public class Main {
 		if (keepComplete == false && problemReport != null){
 			System.out.println("Parameter --problem-report is ignored, because parameter --keep-complete is not set");
 		}
-		String splitFile = params.getSplitFile();
+		
 		if (splitFile != null) {
 			try {
 				areaList = new AreaList();
