@@ -141,12 +141,22 @@ public class SplittableDensityArea implements SplittableArea {
 			return split(maxNodes);
 		if (polygonArea.isSingular()){
 			java.awt.geom.Area rasteredArea = allDensities.rasterPolygon(polygonArea);
+			if (rasteredArea.isEmpty()){
+				System.err.println("Bounding polygon doesn't intersect with the bounding box of the input file(s)");
+				return Collections.emptyList();
+			}
 			prepare(polygonArea);
 			Tile tile = new Tile(rasteredArea.getBounds().x,rasteredArea.getBounds().y,rasteredArea.getBounds().width,rasteredArea.getBounds().height);
 			Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredArea);
 			return solution.getAreas(polygonArea);
-		} else 
-			return splitPolygon(polygonArea);
+		} else {
+			if (polygonArea.intersects(Utils.area2Rectangle(allDensities.getBounds(),0)))
+				return splitPolygon(polygonArea);
+			else {
+				System.err.println("Bounding polygon doesn't intersect with the bounding box of the input file(s)");
+				return Collections.emptyList();
+			}
+		}
 	}
 
 	
@@ -301,7 +311,8 @@ public class SplittableDensityArea implements SplittableArea {
 			shapeBounds  = RoundingUtils.round(shapeBounds, resolution);
 			SplittableArea splittableArea = new SplittableDensityArea(allDensities.subset(shapeBounds));
 			if (splittableArea.hasData() == false){
-				result.add(shapeBounds);
+				System.out.println("Warning: a part of the bounding polygon would be empty and is ignored:" + shapeBounds);
+				//result.add(shapeBounds);
 				continue;
 			}
 			List<Area> partResult = splittableArea.split(maxNodes, shapeArea);
