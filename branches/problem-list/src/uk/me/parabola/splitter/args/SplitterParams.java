@@ -92,4 +92,6 @@ public interface SplitterParams {
 	@Option(defaultValue = "dist", description = "Debugging: stop after the program phase. Can be split, gen-problem-list, or handle-problem-list")
 	String getStopAfter();
 	
+	@Option(description = "The name of a directory containing precompiled sea tiles.")
+	String getPrecompSea();
 }

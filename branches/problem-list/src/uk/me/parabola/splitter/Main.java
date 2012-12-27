@@ -132,8 +132,12 @@ public class Main {
 	private final HashMap<String, ShortArrayList> blockTypeMap = new HashMap<String, ShortArrayList>(); 
 	// for faster access on blocks in o5m files
 	private final HashMap<String, long[]> skipArrayMap = new HashMap<String, long[]>();
+	private boolean useFileAccessOptimizer = true;
 
 	private String stopAfter;
+
+	private String precompSeaDir;
+
 	
 	public static void main(String[] args) {
 
@@ -418,6 +422,15 @@ public class Main {
 			System.err.println("Error: the --stop-after parameter must be either split, gen-problem-list, handle-problem-list, or dist.");
 			System.exit(-1);
 		}
+		
+		precompSeaDir = params.getPrecompSea();
+		if (precompSeaDir != null){
+			File dir = new File (precompSeaDir);
+			if (dir.exists() == false || dir.canRead() == false){
+				System.out.println("Error: precomp-sea directory doesn't exist or is not readable: " + precompSeaDir);  
+				System.exit(-1);
+			}
+		}
 	}
 
 	/**
@@ -426,7 +439,7 @@ public class Main {
 	 */
 	private AreaList calculateAreas() throws IOException, XmlPullParserException {
 
-		MapCollector pass1Collector = new DensityMapCollector(resolution); 
+		DensityMapCollector pass1Collector = new DensityMapCollector(resolution); 
 		MapProcessor processor = pass1Collector;
 		
 		File densityData = new File("densities.txt");
@@ -441,10 +454,23 @@ public class Main {
 		}
 		System.out.println("in " + filenames.size() + (filenames.size() == 1 ? " file" : " files"));
 		System.out.println("Time: " + new Date());
-
-		Area exactArea = pass1Collector.getExactArea();
 		if (densityOutData != null )
 			pass1Collector.saveMap(densityOutData.getAbsolutePath());
+
+		Area exactArea = pass1Collector.getExactArea();
+		if (precompSeaDir != null){
+			useFileAccessOptimizer  = false;
+			DensityMapCollector seaCollector = new DensityMapCollector(resolution);
+			MapProcessor seaProcessor = seaCollector;
+			PrecompSeaReader precompSeaReader = new PrecompSeaReader(exactArea, new File(precompSeaDir));
+			List<String> saveFilenames = filenames;
+			filenames = precompSeaReader.getPrecompFileNames();
+			precompSeaReader = null;
+			processMap(seaProcessor);
+			pass1Collector.mergeSeaData(seaCollector);
+			filenames = saveFilenames;
+			useFileAccessOptimizer = true;
+		}
 		
 		SplittableArea splittableArea = pass1Collector.getRoundedArea(resolution);
 		if (splittableArea.hasData() == false)
@@ -741,7 +767,7 @@ public class Main {
 					long[] skipArray = skipArrayMap.get(filename);
 					O5mMapParser o5mParser = new O5mMapParser(processor, stream, skipArray);
 					o5mParser.parse();
-					if (skipArray == null){
+					if (skipArray == null && useFileAccessOptimizer){
 						skipArray = o5mParser.getSkipArray();
 						skipArrayMap.put(filename, skipArray);
 					}
@@ -757,7 +783,7 @@ public class Main {
 						blockinput.process();
 					} finally {
 						blockinput.close();
-						if (blockTypes == null){
+						if (blockTypes == null && useFileAccessOptimizer){
 							// remember this file 
 							blockTypes = binParser.getBlockList();
 							blockTypeMap.put(filename, blockTypes);
