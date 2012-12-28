@@ -107,12 +107,12 @@ public class PrecompSeaReader {
 				String tileName = index.get(precompKey);
 				
 				if (tileName == null) {
-					//System.err.println("Precompile sea tile "+tileName+" is missing in the index. Skipping.");
+					// a tile with only sea or land or tile doesn't exist
 					continue;
 				}
 				
 				if ("sea".equals(tileName) || "land".equals(tileName)) {
-					// nop
+					// should not happen
 				} else {
 					String precompTile = new File(precompSeaDir,tileName).getAbsolutePath();
 					precompFiles.add(precompTile);

@@ -993,8 +993,6 @@ public class SplittableDensityArea implements SplittableArea {
 					maxY = y + i;
 					break;
 				}
-				if (maxY >= 0)
-					break;
 			}
 
 			assert minX <= maxX;

@@ -71,8 +71,8 @@ class DensityMapCollector extends AbstractMapProcessor{
 		return new SplittableDensityArea(densityMap.subset(bounds));
 	} 
 
-	public void mergeSeaData(DensityMapCollector seaData) {
-		densityMap.mergeSeaData(seaData.densityMap);
+	public void mergeSeaData(DensityMapCollector seaData, boolean trim) {
+		densityMap.mergeSeaData(seaData.densityMap, getExactArea(), trim);
 	}
 
 	public void saveMap(String fileName) {

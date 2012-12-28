@@ -459,6 +459,8 @@ public class Main {
 
 		Area exactArea = pass1Collector.getExactArea();
 		if (precompSeaDir != null){
+			System.out.println("Counting nodes of precompiled sea data ...");
+			long startSea = System.currentTimeMillis();
 			useFileAccessOptimizer  = false;
 			DensityMapCollector seaCollector = new DensityMapCollector(resolution);
 			MapProcessor seaProcessor = seaCollector;
@@ -467,9 +469,11 @@ public class Main {
 			filenames = precompSeaReader.getPrecompFileNames();
 			precompSeaReader = null;
 			processMap(seaProcessor);
-			pass1Collector.mergeSeaData(seaCollector);
+			pass1Collector.mergeSeaData(seaCollector, trim);
 			filenames = saveFilenames;
 			useFileAccessOptimizer = true;
+			System.out.println("Precompiled sea data pass took " + (System.currentTimeMillis()-startSea) + " ms");
+			
 		}
 		
 		SplittableArea splittableArea = pass1Collector.getRoundedArea(resolution);
