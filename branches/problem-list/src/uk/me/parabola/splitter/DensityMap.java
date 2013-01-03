@@ -32,6 +32,7 @@ import java.util.regex.Pattern;
  * @author Chris Miller
  */
 public class DensityMap {
+	private static final int SEA_NODE_FACTOR = 2;
 	private final int width, height, shift;
 	private final int[][] nodeMap;
 	private Area bounds;
@@ -407,7 +408,7 @@ public class DensityMap {
 				col = new int[height];
 			for (int y = minY; y <= maxY; y++){
 				if (col[y] == 0){
-					int seaCount = seaCol[y];
+					int seaCount = seaCol[y] * SEA_NODE_FACTOR;
 					if (seaCount > 0){
 						col[y] = seaCount;
 						totalNodeCount += seaCount;
