@@ -286,10 +286,8 @@ public class Main {
 		} else {
 			boolean filesOK = true;
 			for (String fileName: filenames){
-				File f = new File(fileName);
-				if (f.exists() == false || f.isFile() == false || f.canRead() == false){
+				if (testAndReportFname(fileName, "input file") == false){
 					filesOK = false;
-					System.out.println("File doesn't exist or is not a readable file:" + fileName );
 				}
 			}
 			if (!filesOK){
@@ -301,6 +299,11 @@ public class Main {
 		maxNodes = params.getMaxNodes();
 		description = params.getDescription();
 		geoNamesFile = params.getGeonamesFile();
+		if (geoNamesFile != null){
+			if (testAndReportFname(geoNamesFile, "geonames-file") == false){
+				System.exit(-1);
+			}
+		}
 		resolution = params.getResolution();
 		trim = !params.isNoTrim();
 		outputType = params.getOutput();
@@ -335,9 +338,7 @@ public class Main {
 		}
 		String splitFile = params.getSplitFile();
 		if (splitFile != null) {
-			File f = new File(splitFile);
-			if (f.exists() == false || f.isFile() == false || f.canRead() == false){
-				System.out.println("Split-file doesn't exist or is not readable: " + splitFile);
+			if (testAndReportFname(splitFile, "split-file") == false){
 				System.exit(-1);
 			}
 		}
@@ -804,11 +805,11 @@ public class Main {
 					}
 				}
 			} catch (FileNotFoundException e) {
-				System.out.printf("ERROR: file %s was not found\n", filename);
+				System.out.printf("ERROR: file %s was not found%n", filename);
 			} catch (XmlPullParserException e) {
-				System.out.printf("ERROR: file %s is not a valid OSM XML file\n", filename);
+				System.out.printf("ERROR: file %s is not a valid OSM XML file%n", filename);
 			} catch (IllegalArgumentException e) {
-				System.out.printf("ERROR: file %s contains unexpected data\n", filename);
+				System.out.printf("ERROR: file %s contains unexpected data%n", filename);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -846,17 +847,19 @@ public class Main {
 		w.println("# for each one.");
 		for (Area a : areas) {
 			w.println();
-			w.format("mapname: %08d\n", a.getMapId());
+			w.format("mapname: %08d%n", a.getMapId());
 			if (a.getName() == null)
 				w.println("# description: OSM Map");
 			else
 				w.println("description: " + (a.getName().length() > 50 ? a.getName().substring(0, 50) : a.getName()));
+			String ext;
 			if("pbf".equals(outputType))
-				  w.format("input-file: %08d.osm.pbf\n", a.getMapId());
+				ext = ".osm.pbf";
 			else if("o5m".equals(outputType))
-				  w.format("input-file: %08d.o5m\n", a.getMapId());
+				ext = ".o5m";
 			else
-			  w.format("input-file: %08d.osm.gz\n", a.getMapId());
+				ext = ".osm.gz";
+			w.format("input-file: %08d%s%n", a.getMapId(), ext);
 		}
 
 		w.println();
@@ -1303,5 +1306,15 @@ public class Main {
 		return true;
 	}
 
+	static boolean testAndReportFname(String fileName, String type){
+		File f = new File(fileName);
+		if (f.exists() == false || f.isFile() == false || f.canRead() == false){
+			String msg = "Error: " + type + " doesn't exist or is not a readable file: " + fileName;
+			System.out.println(msg);
+			System.err.println(msg);
+			return false;
+		}
+		return true;
+	}
 	
 }
