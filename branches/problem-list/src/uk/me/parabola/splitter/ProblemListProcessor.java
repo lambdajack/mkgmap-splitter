@@ -215,6 +215,8 @@ class ProblemListProcessor extends AbstractMapProcessor {
 	public void processRelation(Relation rel) {
 		//BitSet writerSet = new BitSet();
 		boolean useThis = false;
+		boolean isBoundayType = false;
+		boolean isNotAdminBoundary = false;
 		Iterator<Element.Tag> tags = rel.tagsIterator();
 		while(tags.hasNext()) {
 			Element.Tag t = tags.next();
@@ -225,7 +227,13 @@ class ProblemListProcessor extends AbstractMapProcessor {
 						break;
 					}
 				}
+				if ("boundary".equals(t.value))
+					isBoundayType = true;
 			}
+			if ("boundary".equals(t.key) && "administrative".equals(t.value) == false) 
+				isNotAdminBoundary = true;
+			if (isBoundayType && isNotAdminBoundary)
+				useThis = true;
 			if (useThis)
 				break;
 		}

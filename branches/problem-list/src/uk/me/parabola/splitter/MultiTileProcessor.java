@@ -997,7 +997,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 				Iterator<Element.Tag> tags = rel.tagsIterator();
 				while(tags.hasNext()) {
 					Element.Tag t = tags.next();
-					if ("type".equals(t.key) && ("multipolygon".equals(t.value)/* || "boundary".equals(t.value)*/)){
+					if ("type".equals(t.key) && ("multipolygon".equals(t.value) || "boundary".equals(t.value))){
 						markAsMultiPolygon();
 					} 
 					else if (nameTag.equals(t.key)){
