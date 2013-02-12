@@ -210,35 +210,50 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		}
 	}
 	
-	private final static String[] WANTED_RELS = {"restriction", "multipolygon" ,"through_route"};
+	private final static String[] NEEDED_REL_TYPES = {"restriction", "through_route"};
+	private final static String[] MP_REL_TYPES = {"multipolygon" , "boundary"};
+	private final static String[] EXCLUDED_BOUNDARY_TAGS = {"administrative", "postal_code", "political"};
+	
 	@Override
 	public void processRelation(Relation rel) {
-		//BitSet writerSet = new BitSet();
 		boolean useThis = false;
-		boolean isBoundayType = false;
-		boolean isNotAdminBoundary = false;
+		boolean isMPRelType = false;
+		boolean isExcludedBoundary = false;
+		boolean isIncludedBoundary = true;
 		Iterator<Element.Tag> tags = rel.tagsIterator();
 		while(tags.hasNext()) {
 			Element.Tag t = tags.next();
 			if ("type".equals(t.key)) {
-				for (String wanted: WANTED_RELS){
-					if (wanted.equals((t.value))){
-						useThis = true;
+				for (String needed: NEEDED_REL_TYPES){
+					if (needed.equals((t.value))){
+						useThis= true; // no need to check other tags
 						break;
 					}
 				}
-				if ("boundary".equals(t.value))
-					isBoundayType = true;
+				for (String wanted: MP_REL_TYPES){
+					if (wanted.equals((t.value))){
+						isMPRelType= true;
+						break;
+					}
+				}
+			} 
+			if ("boundary".equals(t.key)){
+				for (String excl: EXCLUDED_BOUNDARY_TAGS){
+					if (excl.equals((t.value))){
+						isExcludedBoundary= true;
+						break;
+					}
+				}
 			}
-			if ("boundary".equals(t.key) && "administrative".equals(t.value) == false) 
-				isNotAdminBoundary = true;
-			if (isBoundayType && isNotAdminBoundary)
-				useThis = true;
+			
 			if (useThis)
 				break;
 		}
-		if (!useThis)
+		if (isMPRelType && !isExcludedBoundary && isIncludedBoundary)
+			useThis = true;
+		if (!useThis){
 			return;
+		}
 		writerSet.clear();
 		Integer relWriterIdx;
 		if (!isFirstPass){
