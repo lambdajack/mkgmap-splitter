@@ -43,6 +43,7 @@ import java.io.PrintWriter;
 import java.io.Reader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -123,6 +124,8 @@ public class Main {
 	
 	private String problemReport;
 	
+	private String[] boundaryTagList;
+	
 	private LongArrayList problemWays = new LongArrayList();
 	private LongArrayList problemRels = new LongArrayList();
 	private TreeSet<Long> calculatedProblemWays = new TreeSet<Long>();
@@ -137,6 +140,7 @@ public class Main {
 	private String stopAfter;
 
 	private String precompSeaDir;
+
 
 	
 	public static void main(String[] args) {
@@ -360,7 +364,14 @@ public class Main {
 				System.exit(-1);
 			}
 		}
-		
+		problemReport = params.getProblemReport();
+		String boundaryTags = params.getBoundaryTags();
+		if ("use-exclude-list".equals(boundaryTags) == false){
+			Pattern csvSplitter = Pattern.compile(Pattern.quote(","));
+			boundaryTagList = csvSplitter.split(boundaryTags);
+		}
+
+		// plausibility checks and default handling 
 		if (keepComplete){
 			if (filenames.size() > 1){
 				System.err.println("--keep-complete is not supported for multiple input files. Please execute splitter once for each file.");
@@ -378,15 +389,19 @@ public class Main {
 			} else
 				overlapAmount = 0;
 		}
-		else if (overlapAmount < 0){
-			overlapAmount = 2000;
-			System.out.println("Setting default overlap=2000 because keep-complete=false is in use.");
+		else {
+			if (overlapAmount < 0){
+				overlapAmount = 2000;
+				System.out.println("Setting default overlap=2000 because keep-complete=false is in use.");
+			}
+
+			if (problemReport != null){
+				System.out.println("Parameter --problem-report is ignored, because parameter --keep-complete=false is used");
+			}
+			if (boundaryTags != null){
+				System.out.println("Parameter --boundaryTags is ignored, because parameter --keep-complete=false is used");
+			}
 		}
-		problemReport = params.getProblemReport();
-		if (keepComplete == false && problemReport != null){
-			System.out.println("Parameter --problem-report is ignored, because parameter --keep-complete is not set");
-		}
-		
 		if (splitFile != null) {
 			try {
 				areaList = new AreaList();
@@ -571,7 +586,7 @@ public class Main {
 			int numWritersThisPass = Math.min(areasPerPass, workAreas.size() - pass * areasPerPass);
 			ProblemListProcessor processor = new ProblemListProcessor(
 					dataStorer, writerOffset, numWritersThisPass,
-					problemWaysThisPart, problemRelsThisPart);
+					problemWaysThisPart, problemRelsThisPart, boundaryTagList);
 			
 			boolean done = false;
 			while (!done){
