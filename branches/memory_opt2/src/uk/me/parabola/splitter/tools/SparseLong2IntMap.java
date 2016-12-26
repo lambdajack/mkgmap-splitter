@@ -107,7 +107,8 @@ public final class SparseLong2IntMap {
 	
 	// bit masks for the flag byte
 	private static final int FLAG_USED_BYTES_MASK = 0x03; // number of bytes - 1 
-	private static final int FLAG_COMP_METHOD_DELTA = 0x10; // rest of vals are delta encoded, bias is first val
+	private static final int FLAG_COMP_METHOD_DELTA = 0x20; // rest of vals are delta encoded, bias is first val
+	private static final int FLAG_COMP_METHOD_BITS = 0x40; // rest of vals are "bit" encoded 
 	private static final int FLAG_COMP_METHOD_RLE = 0x80; // values are run length encoded
 
 	// for statistics
@@ -121,7 +122,22 @@ public final class SparseLong2IntMap {
 	static final long MAX_MEM = Runtime.getRuntime().maxMemory() / 1024 / 1024;
 	static final int POINTER_SIZE = (MAX_MEM < 32768) ? 4 : 8; // presuming that compressedOOps is enabled
 	
-	private Integer bias1; // used for initial delta encoding 
+	private Integer bias1; // used for initial delta encoding
+	private final BitWriter bitWriter = new BitWriter(1000);
+	
+
+	/**
+	 * A map that stores pairs of (OSM) IDs and int values identifying the
+	 * areas in which the object with the ID occurs. 
+	 * @param dataDesc
+	 */
+	public SparseLong2IntMap(String dataDesc) {
+		long reserve = (1L << CHUNK_STORE_BITS_FOR_Y - 1) * CHUNK_SIZE - LARGE_VECTOR_SIZE;
+		assert reserve > 0;
+		this.dataDesc = dataDesc;
+		System.out.println(dataDesc + " Map: uses " + this.getClass().getSimpleName());
+		clear();
+	}
 
 	/**
 	 * Helper class to manage memory for chunks.
@@ -207,19 +223,6 @@ public final class SparseLong2IntMap {
 	}
 	
 	/**
-	 * A map that stores pairs of (OSM) IDs and int values identifying the
-	 * areas in which the object with the ID occurs. 
-	 * @param dataDesc
-	 */
-	public SparseLong2IntMap(String dataDesc) {
-		long reserve = (1L << CHUNK_STORE_BITS_FOR_Y - 1) * CHUNK_SIZE - LARGE_VECTOR_SIZE;
-		assert reserve > 0;
-		this.dataDesc = dataDesc;
-		System.out.println(dataDesc + " Map: uses " + this.getClass().getSimpleName());
-		clear();
-	}
-
-	/**
 	 * Count how many of the lowest X bits in mask are set.
 	 *
 	 * @return how many of the lowest X bits in mask are set.
@@ -275,39 +278,30 @@ public final class SparseLong2IntMap {
 	}
 
 	/**
-	 * Try to use Run Length Encoding (RLE) to compress the chunk stored in tmpWork. In most
+	 * calculate the number of bits needed to store the value as a signed number.
+	 * @param val the value to store
+	 * @return the number of bits needed to store the value as a signed number
+	 */
+	private static int bitsNeeded(int val) {
+		return Long.SIZE - Long.numberOfLeadingZeros(Math.abs(val)) + 1;
+	}
+  
+	/**
+	 * Try to use Run Length Encoding (RLE) to compress the "mask-encoded" chunk. In most
 	 * cases this works very well because chunks often have only one or two distinct values.
-	 * The run length value is always between 1 and 64, which requires just one byte. 
-	 * If the stored values don't fit into a single byte, also try delta encoding (for values 2 .. n). 
+	 * The values and run length fields are each written with a fixed number of bits.  
 	 * 
 	 * @param numVals number of elements in the chunk, content of {@code maskedChunk} after that is undefined.
 	 * @param minVal smallest value in maskedChunk 
 	 * @param maxVal highest value in maskedChunk 
 	 * 
 	 */
-	private void chunkCompress(int numVals, long minVal, long maxVal) {
-		assert minVal != maxVal;
-		int start = maskedChunk[0];
-		int bytesFor1st = calcNeededBytes(start, start);
-		int bytesForRest = calcNeededBytes(minVal, maxVal);
-		int flag = 0;
-		int bias2 = 0;
-		int prefixLen = 1; 
-		
-		if (bytesForRest > 1) {
-			// check if all values are in a small range which allows 
-			int test = testBias(minVal, maxVal, start);
-			if (test < bytesForRest) {
-				bytesForRest = test;
-				flag |= FLAG_COMP_METHOD_DELTA;
-				bias2 = start;
-			}
-		}
-		int lenNoCompress = Math.min(MAX_STORED_BYTES_FOR_CHUNK, prefixLen + bytesFor1st + (numVals-1) * bytesForRest);
-		int lenRLE = prefixLen; 
-	
-		int numCounts = 0;
+	private void chunkCompress(int numVals, int minVal, int maxVal) {
+		int flag = FLAG_COMP_METHOD_BITS;
 		int opos = 0;
+		int maxRunLen = 0;
+		int numCounts = 0;
+		boolean twoValsOnly = true;
 		for (int i = 0; i < numVals; i++) {
 			int runLength = 1;
 			while (i+1 < numVals && maskedChunk[i] == maskedChunk[i+1]) {
@@ -315,52 +309,128 @@ public final class SparseLong2IntMap {
 				i++;
 			}
 			numCounts++;
+			if (numCounts > 2 && twoValsOnly) {
+				if (maskedChunk[i] != tmpChunk[0] && maskedChunk[i] != tmpChunk[2]) 
+					twoValsOnly = false;
+			}
 			tmpChunk[opos++] = maskedChunk[i];
 			tmpChunk[opos++] = runLength;
-			lenRLE += (numCounts == 1 ? bytesFor1st : bytesForRest) + 1;
-			if (lenRLE >= lenNoCompress) 
-				break;
+			maxRunLen = Math.max(maxRunLen, runLength);
 		}
-		flag |= (bytesForRest - 1) << 2 | (bytesFor1st - 1);
-		
-		boolean storeFlag = true;
-		if (lenRLE < lenNoCompress) {
+		int testBias = maskedChunk[0];
+
+		int bits1 = Math.max(bitsNeeded(minVal), bitsNeeded(maxVal)); 
+		int bits2 = Math.max(bitsNeeded(minVal-testBias), bitsNeeded(maxVal-testBias));
+		int bits;
+		int bias2;
+		if (bits2 < bits1) {
+			flag |= FLAG_COMP_METHOD_DELTA;
+			bias2 = testBias;
+			bits = bits2;
+		} else {
+			bits = bits1;
+			bias2 = 0;
+		}
+		int sign = getSign(minVal-bias2, maxVal - bias2);
+		bitWriter.clear();
+		// try to find out if compression will help
+		int bitsRunLength = bitsNeeded(maxRunLen-1) - 1; // we always have positive values and we store the len decremented by 1
+		int pos = 0;
+		int bias = bias2;
+		int bytesForBias = 0;
+		if ((flag & FLAG_COMP_METHOD_DELTA) == 0) {
+			storeVal(tmpChunk[pos++], bits, sign);
+		} else {
+			pos++;
+			bytesForBias = bytesNeeded(bias2, bias2);
+			flag |= (bytesForBias - 1) & FLAG_USED_BYTES_MASK ;
+		}
+		int added = numCounts * bitsRunLength;
+		int saved = (numVals - numCounts) * bits;
+		if (added < saved) {
 			flag |= FLAG_COMP_METHOD_RLE;
-		} else {
-			// check unlikely special case to make sure that encoded len is below 256 
-			// don't write flag if all values are stored with 4 bytes 
-			storeFlag = (lenNoCompress < MAX_STORED_BYTES_FOR_CHUNK);
-		}
-		if (storeFlag) {
-			bufEncoded.put((byte) flag);
-		}
-		int bytesToUse = bytesFor1st;
-		int bias = 0;
-		if (lenRLE < lenNoCompress) {
-			int pos = 0;
+			flag |= (bitsRunLength & 0x07) << 2;
+			storeRunlen(tmpChunk[pos++] - 1, bitsRunLength);
 			while (pos < opos) {
-				putVal(bufEncoded, tmpChunk[pos++] - bias, bytesToUse);
-				bufEncoded.put((byte) tmpChunk[pos++]); // run length
-				if (pos == 2) {
-					bytesToUse = bytesForRest;
-					bias = bias2;
+				if (!twoValsOnly || pos == 2) {
+					storeVal(tmpChunk[pos++] - bias, bits, sign);
+				} else {
+					// we don't need the values again when we know that there are only two
+					pos++; 
 				}
+				storeRunlen(tmpChunk[pos++] - 1, bitsRunLength);
 			}
-			assert  lenRLE == bufEncoded.position();
 		} else {
-			for (int i = 0; i < numVals; i++) {
-				putVal(bufEncoded, maskedChunk[i] - bias, bytesToUse);
-				if (i == 0) {
-					bytesToUse = bytesForRest;
-					bias = bias2;
+			if (twoValsOnly && maxRunLen > 1)
+				twoValsOnly = false;
+			if (twoValsOnly)
+				storeVal(tmpChunk[2] - bias, bits, sign);
+			else {
+				for (int i = 1; i < numVals; i++) {
+					storeVal(maskedChunk[i] - bias, bits, sign);
 				}
 			}
-			assert  lenNoCompress == bufEncoded.position();
 		}
-	
+		BitWriter bw; 
+		bw = bitWriter;
+		bufEncoded.clear();
+		int len = 1 + 1 + bw.getLength() + (((flag & FLAG_COMP_METHOD_DELTA) != 0) ? bytesForBias : 0);
+		if (len < MAX_STORED_BYTES_FOR_CHUNK) {
+			bufEncoded.put((byte) flag); 
+			int flag2 = (bits-1)  & 0x1f;
+			if (sign > 0)
+				flag2 |= 0x20;
+			else if (sign < 0)
+				flag2 |= 0x40;
+			if (twoValsOnly)
+				flag2 |= 0x80;
+			bufEncoded.put((byte) flag2); // number of bits for the delta encoded values
+			if ((flag & FLAG_COMP_METHOD_DELTA) != 0) {
+				putVal(bufEncoded, bias2, bytesForBias);
+			}
+
+			bufEncoded.put(bw.getBytes(), 0, bw.getLength());
+		} else {
+			// no flag byte for worst case 
+			for (int i = 0; i < numVals; i++){
+				putVal(bufEncoded, maskedChunk[i], 4);
+			}
+		}
 		return;
 	}
+	
+	private void storeVal(int val, int nb, int sign) {
+		if (sign == 0)
+			bitWriter.sputn(val, nb);
+		else if (sign == 1){
+			bitWriter.putn(val, nb-1);
+		} else
+			bitWriter.putn(-val, nb-1);
+	}
 
+	private static int readVal(BitReader br, int bits, int sign) {
+		if (sign == 0)
+		  return br.sget(bits);
+		else if (sign > 0)
+			return br.get(bits-1);
+		return -br.get(bits-1);
+	}
+
+	private static int getSign(int v1, int v2) {
+		assert v1 != v2;
+		if (v1 < 0) {
+			return (v2 <= 0) ? -1 : 0;
+		} else if (v1 > 0) {
+			return v2 >= 0 ? 1: 0;
+		} else {
+			//v1 == 0
+			return v2 < 0 ? -1 : 1;
+		}
+	}
+
+	private void storeRunlen (int val, int nb) {
+		bitWriter.putn(val, nb);
+	}
 	/**
 	 * Try to compress the data in currentChunk and store the result in the chunkStore. 
 	 */
@@ -391,7 +461,7 @@ public final class SparseLong2IntMap {
 		bufEncoded.clear();
 		if (minVal == maxVal) {
 			// nice: single value chunk 
-			int bytesFor1st = calcNeededBytes(minVal, maxVal);
+			int bytesFor1st = bytesNeeded(minVal, maxVal);
 			if (bytesFor1st > 2) {
 				bufEncoded.put((byte) (bytesFor1st - 1)); // flag byte
 			}
@@ -404,26 +474,12 @@ public final class SparseLong2IntMap {
 	}
 
 	/**
-	 * Calculate the needed bytes for the range minVal..maxVal if bias is substructed.
-	 * @param minVal start of range (including)
-	 * @param maxVal end of range (including)
-	 * @param bias the bias value to test
-	 * @return the number of needed bytes
-	 */
-	private static int testBias(long minVal, long maxVal, int bias) {
-		long minVal2 = minVal - bias;
-		long maxVal2 = maxVal - bias;
-		int test = calcNeededBytes(minVal2, maxVal2);
-		return test;
-	}
-
-	/**
 	 * Calculate the number of bytes needed to encode values in the given range.
 	 * @param minVal smallest value
 	 * @param maxVal highest value
 	 * @return number of needed bytes
 	 */
-	static int calcNeededBytes (long minVal, long maxVal) {
+	static int bytesNeeded (long minVal, long maxVal) {
 		if (minVal >= Byte.MIN_VALUE && maxVal <= Byte.MAX_VALUE) {
 			return Byte.BYTES;
 		} else if (minVal >= Short.MIN_VALUE && maxVal <= Short.MAX_VALUE) {
@@ -481,7 +537,7 @@ public final class SparseLong2IntMap {
 	 * @param mp the MemPos instance with information about the store
 	 * @param targetChunk if not null, data will be decoded into this buffer
 	 * @param chunkOffset gives the wanted element (targetChunk must be null)
-	 * @return
+	 * @return the extracted value or unassigned 
 	 */
 	private int decodeStoredChunk (MemPos mp, int[] targetChunk, int chunkOffset) {
 		int chunkLen = mp.x + 1;
@@ -495,6 +551,10 @@ public final class SparseLong2IntMap {
 			bytesToUse = chunkLen;
 		} else {
 			flag = inBuf.get();
+			if ((flag & FLAG_COMP_METHOD_BITS) != 0) {
+				inBuf.position(inBuf.position() - 1);
+				return decodeBits(mp, targetChunk, chunkOffset, inBuf);
+			}
 			bytesToUse = (flag & FLAG_USED_BYTES_MASK) + 1;	
 		}
 		int bias = bias1;
@@ -546,20 +606,127 @@ public final class SparseLong2IntMap {
 			maskedChunk[mPos++] = val;
 			
 		}
+		updateTargetChunk(targetChunk, chunkMask, singleValueChunk);
+		return unassigned; 
+	}
+
+	
+	private void updateTargetChunk(int[] targetChunk, long chunkMask, boolean singleValueChunk) {
+		if (targetChunk == null)
+			return;
+		int j = 0;
+		int opos = 0;
+		while (chunkMask != 0) {
+			if ((chunkMask & 1L) != 0) {
+				targetChunk[opos] = maskedChunk[j];
+				if (!singleValueChunk)
+					j++;
+			}
+			opos++;
+			chunkMask >>>= 1;
+		}
+	}
+
+	/**
+	 * Decode a stored chunk written with the {@link BitWriter}.
+	 * @param mp
+	 * @param targetChunk
+	 * @param chunkOffset
+	 * @param inBuf
+	 * @return
+	 */
+	private int decodeBits(MemPos mp, int[] targetChunk, int chunkOffset, ByteBuffer inBuf) {
+		int flag = inBuf.get();
+		assert (flag & FLAG_COMP_METHOD_BITS) != 0;
+		long chunkMask = mp.getMask();
+		int index = CHUNK_SIZE + 1; 
+		if (targetChunk == null) {
+			// we only want to retrieve one value for the index
+			index = countUnder(chunkMask, chunkOffset); 
+		}
+		int origIndex = index;
+		int bitsFlag = inBuf.get();
+		int bits = (bitsFlag & 0x1f) + 1;
+		int sign = 0;
+		if ((bitsFlag & 0x20) != 0)
+			sign = 1;
+		else if ((bitsFlag & 0x40) != 0)
+			sign = -1;
+		boolean twoValsOnly = (bitsFlag & 0x80) != 0;
+
+		assert bits >= 1;
+		BitReader br;
+		int bias = bias1;
+		int val;
+		// read first value
+		if ((flag & FLAG_COMP_METHOD_DELTA) != 0) {
+			int bytesFor1st = (flag & FLAG_USED_BYTES_MASK) + 1;
+			val = getVal(inBuf, bytesFor1st) + bias;
+			bias = val;
+			br = new BitReader(inBuf.array(), inBuf.position());
+		} else {
+			br = new BitReader(inBuf.array(), inBuf.position());
+			val = readVal(br, bits, sign) + bias;
+		}
+		if (--index < 0)
+			return val;
+		if (targetChunk == null && (flag & FLAG_COMP_METHOD_RLE) == 0) {
+			// shortcut: we can calculate the position of the value in the bit stream
+			if (twoValsOnly) {
+				if ((origIndex & 0x01) == 0) 
+					return val; // even index: return first val
+			} else {
+				if (index > 0) {
+					int bitPos;
+					int bitsToUse = bits - Math.abs(sign); 
+					bitPos = br.getBitPosition() + index * bitsToUse;
+					br.position(bitPos);
+				} 
+			}
+			return readVal(br, bits, sign) + bias;
+		}
+		int runLength;
+		int bitsForRLE = 0; 
+		if ((flag & FLAG_COMP_METHOD_RLE) != 0) {
+			bitsForRLE = (flag >> 2) & 0x07;
+			runLength = br.get(bitsForRLE) + 1;
+			index -= runLength - 1;
+			if (index < 0)
+				return val;
+		} else 
+			runLength = 1;
+		tmpChunk[0] = val;
+		int mPos = 0;
 		if (targetChunk != null) {
-			int j = 0;
-			int opos = 0;
-			while (chunkMask != 0) {
-				if ((chunkMask & 1) != 0) {
-					targetChunk[opos] = maskedChunk[j];
-					if (!singleValueChunk) {
-						j++;
-					}
-				}
-				opos++;
-				chunkMask >>>= 1;
+			while (--runLength >= 0) {
+				maskedChunk[mPos++] = val;
 			}
 		}
+		int tmpPos = 1;
+		while (mPos < CHUNK_SIZE && br.getBitPosition() + bits + bitsForRLE <= (inBuf.position() + inBuf.remaining()) * 8) {
+			if (!twoValsOnly || tmpPos == 1) {
+				val = readVal(br, bits, sign) + bias;
+				tmpChunk[tmpPos] = val;
+			} else {
+				val = tmpChunk[tmpPos & 0x01];
+			}
+			tmpPos++;
+			if (--index < 0)
+				return val;
+			if ((flag & FLAG_COMP_METHOD_RLE) != 0) {
+				runLength = br.get(bitsForRLE) + 1; 
+				index -= runLength - 1;
+				if (index < 0)
+					return val;
+			} else 
+				runLength = 1;
+			if (targetChunk != null) {
+				while (--runLength >= 0) {
+					maskedChunk[mPos++] = val;
+				}
+			}
+		}
+		updateTargetChunk(targetChunk, chunkMask, false);
 		return unassigned; 
 	}
 
