@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import it.unimi.dsi.fastutil.Hash;
+import it.unimi.dsi.fastutil.ints.Int2IntLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -197,7 +198,7 @@ public final class SparseLong2IntMap {
 	 * @author Gerd Petermann
 	 *
 	 */
-	private class MemPos{
+	private static class MemPos{
 		final int x,y,z;
 		final Mem mem;
 		final int largeVectorIndex;
@@ -345,8 +346,28 @@ public final class SparseLong2IntMap {
 			bytesForBias = bytesNeeded(bias2, bias2);
 			flag |= (bytesForBias - 1) & FLAG_USED_BYTES_MASK ;
 		}
+		int bitsToUse = bits - Math.abs(sign);
 		int added = numCounts * bitsRunLength;
-		int saved = (numVals - numCounts) * bits;
+		int saved = (numVals - numCounts) * bitsToUse;
+		if (added > saved && !twoValsOnly) {
+			long dd = 4;
+		}
+		int distintVals = 2;
+		if (numCounts > 3 && !twoValsOnly && bitsToUse > 2) {
+			Int2IntLinkedOpenHashMap test = new Int2IntLinkedOpenHashMap();
+			test.defaultReturnValue(-1);
+			for (int j = 0; j < opos; j += 2) {
+				if (test.get(tmpChunk[j]) == -1)
+					test.put(tmpChunk[j],j>>1);
+			}
+			distintVals = test.size();
+			int bitsForPos = bitsNeeded(distintVals) - 1;
+			int len1 = distintVals * bitsToUse + numCounts * bitsForPos ;
+			int len2 = numCounts * bitsToUse;
+			System.out.println((len2 - len1) + " " + numCounts + " " + distintVals + " " + bitsToUse + " " + len1 + " " + len2 + " " + (len1 <= len2));
+		}
+
+
 		if (added < saved) {
 			flag |= FLAG_COMP_METHOD_RLE;
 			flag |= (bitsRunLength & 0x07) << 2;
@@ -745,7 +766,6 @@ public final class SparseLong2IntMap {
 		int idx = mem.largeVector[chunkid];  // performance bottleneck: produces many cache misses
 		if (idx == 0)
 			return null;
-		currentChunkIdInStore = idx;
 		int x = idx & CHUNK_STORE_X_MASK;
 		int y = (idx >> CHUNK_STORE_Y_SHIFT) & CHUNK_STORE_Y_MASK;
 		y--; // we store the y value incremented by 1
