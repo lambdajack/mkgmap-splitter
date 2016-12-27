@@ -29,11 +29,12 @@ public class BitWriter {
 	// The byte buffer and its current length (allocated length)
 	private byte[] buf;  // The buffer
 	private int bufsize;  // The allocated size
-	private int buflen; // The actual used length
-	private int cntExtra;
+	private int cntExtra; // TODO remove this and the code 
 
-	// The bit offset into the byte array.
-	private int bitoff;
+	/** The number of bits already used in the current byte of the buffer. */
+	private int usedBits;
+	/** The index of the current byte of the buffer. */
+	private int index;
 	private static final int BUFSIZE_INC = 50;
 	private static final int INITIAL_BUF_SIZE = 20;  
 	
@@ -47,10 +48,10 @@ public class BitWriter {
 	}
 
 	public void clear() {
-		Arrays.fill(buf, (byte)0);
-		bitoff = 0;
-		buflen = 0;
+		Arrays.fill(buf, (byte) 0);
 		cntExtra = 0;
+		index = 0;
+		usedBits = 0;
 	}
 
 	/**
@@ -59,24 +60,18 @@ public class BitWriter {
 	 * @param b The bottom bit of the integer is set at the current bit position.
 	 */
 	private void put1(int b) {
-		ensureSize(bitoff + 1);
-
-		int off = getByteOffset(bitoff);
+		ensureSize(index + 1);
 
 		// Get the remaining bits into the byte.
-		int rem = bitoff - 8 * off;
+		int rem = usedBits;
 
 		// Or it in, we are assuming that the position is never turned back.
-		buf[off] |= (b & 0x1) << rem;
-
-		// Increment position
-		bitoff++;
-
-		// If we are in a new byte, increase the byte length.
-		if ((bitoff & 0x7) == 1)
-			buflen++;
-
-//		debugPrint(b, 1);
+		buf[index] |= (b & 0x1) << rem;
+		usedBits++;
+		if (usedBits == 8) {
+			index++;
+			usedBits = 0;
+		}
 	}
 	
 	public void put1(boolean b) {
@@ -95,27 +90,28 @@ public class BitWriter {
 		int val = nb < 32 ? bval & ((1<<nb) - 1) : bval;
 		int n = nb;
 
-		ensureSize(bitoff + n);
-
+		ensureSize(index + (usedBits + n + 7) / 8);
+		
+		int rem = usedBits;
+			
 		// Get each affected byte and set bits into it until we are done.
 		while (n > 0) {
-			int ind = getByteOffset(bitoff);
-			int rem = bitoff - 8*ind;
-
-			buf[ind] |= ((val << rem) & 0xff);
-
-			// Shift down in preparation for next byte.
-			val >>>= 8-rem;
+			buf[index] |= ((val << rem) & 0xff);
 
 			// Account for change so far
 			int nput = 8 - rem;
 			if (nput > n)
 				nput = n;
-			bitoff += nput;
+			usedBits += nput;
+			if (usedBits >= 8) {
+				index++;
+				usedBits = 0;
+			}
+			// Shift down in preparation for next byte.
+			val >>>= nput;
+			rem = 0;
 			n -= nput;
 		}
-
-		buflen = (bitoff+7)/8;
 	}
 	
 	/**
@@ -126,9 +122,6 @@ public class BitWriter {
 	public void sputn(final int bval, final int nb) {
 		assert nb > 1 && nb <= 32;
 		int top = 1 << (nb - 1);
-		if (bval == Integer.MIN_VALUE) {
-			long dd =4;
-		}
 		if (bval < 0) {
 			assert -bval <  top || top < 0;  
 			int v = (top + bval) | top; 
@@ -178,7 +171,7 @@ public class BitWriter {
 	}
 
 	public int getBitPosition() {
-		return bitoff;
+		return index * 8 + usedBits;
 	}
 	
 	/**
@@ -187,27 +180,19 @@ public class BitWriter {
 	 * @return Number of bytes required to hold the output.
 	 */
 	public int getLength() {
-		return buflen;
-	}
-
-	/**
-	 * Get the byte offset for the given bit number.
-	 *
-	 * @param boff The number of the bit in question.
-	 * @return The index into the byte array where the bit resides.
-	 */
-	private static int getByteOffset(int boff) {
-		return boff/8;
+		if (usedBits == 0)
+			return index;
+		return index + 1;
 	}
 
 	/**
 	 * Set everything up so that the given size can be accommodated.
 	 * The buffer is re-sized if necessary.
 	 *
-	 * @param newlen The new length of the bit buffer in bits.
+	 * @param newlen The new length of the bit buffer in bytes.
 	 */
 	private void ensureSize(int newlen) {
-		if (newlen/8 >= bufsize)
+		if (newlen >= bufsize)
 			reallocBuffer();
 	}
 
@@ -216,9 +201,6 @@ public class BitWriter {
 	 */
 	private void reallocBuffer() {
 		bufsize += BUFSIZE_INC;
-		byte[] newbuf = new byte[bufsize];
-
-		System.arraycopy(this.buf, 0, newbuf, 0, this.buf.length);
-		this.buf = newbuf;
+		buf = Arrays.copyOf(buf, bufsize);
 	}
 }

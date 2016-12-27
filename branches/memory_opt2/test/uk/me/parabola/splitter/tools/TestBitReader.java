@@ -65,6 +65,45 @@ public class TestBitReader {
 	}
 	
 	@Test
+	public void testWriteReadSingleBit() {
+		BitWriter bw = new BitWriter();
+		final int testVal  = 1231212311;
+		int n = 0;
+		
+		int v = testVal;
+		while (v > 0) {
+			bw.put1(v % 2 != 0);
+			v >>= 1;
+			n++;
+		}
+		assertEquals(n, bw.getBitPosition());
+		BitReader br = new BitReader(bw.getBytes());
+		v = testVal;
+		while (n-- > 0) {
+			boolean b = br.get1();
+			assertEquals(v % 2 != 0, b);
+			v >>= 1;
+		}
+	}
+
+	@Test
+	public void testDynAlloc() {
+		BitWriter bw = new BitWriter(10);
+		int n = 0;
+		int bits = 9;
+		for (int i = 0; i < 100; i++) {
+			bw.putn(i, bits);
+			n += bits;
+		}
+		assertEquals(n, bw.getBitPosition());
+		for (int i = 0; i < 100; i++) {
+			bw.put1(i % 3 == 0);
+			n += 1;
+		}
+		assertEquals(n, bw.getBitPosition());
+	}
+
+	@Test
 	public void testWriteReadSigned() {
 		for (int n = 2; n <= 32; n++) {
 			testWriteReadSigned(n);
