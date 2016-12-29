@@ -20,6 +20,7 @@ package uk.me.parabola.splitter.tools;
  * Read an array as a bit stream.
  *
  * @author Steve Ratcliffe
+ * @author Gerd Petermann
  */
 public class BitReader {
 	private final byte[] buf;
@@ -30,14 +31,15 @@ public class BitReader {
 	/**  bit position within the current byte. */
 	private int bitPosition;
 
+	public BitReader(byte[] buf) {
+		this(buf, 0);
+	}
+
 	public BitReader(byte[] buf, int start) {
 		this.buf = buf;
 		this.offset = start;
 		reset();
-	}
-
-	public BitReader(byte[] buf) {
-		this(buf,0);
+		
 	}
 
 	/** reset the reader for a repeated read. */
@@ -49,7 +51,12 @@ public class BitReader {
 	/** set the reader to the given bit position. */
 	public void position(int bitPos) {
 		index = offset + bitPos / 8;
-		bitPosition = bitPos % 8;
+		bitPosition = bitPos & 0x07;
+	}
+	
+	/** set the reader to the relative bit position. */
+	public void skip(int bits) {
+		position(getBitPosition() + bits);
 	}
 	
 	/** get a single bit. */
@@ -69,22 +76,20 @@ public class BitReader {
 		if (n == 1) {
 			return get1() ? 1 : 0;
 		}
-		int res = 0;
-
-		int pos = 0;
-		while (pos < n) {
-			int nbits = n - pos;
-			if (nbits > (8 - bitPosition))
-				nbits = 8 - bitPosition;
-
-			res |= ((buf[index] & 0xff) >>> bitPosition) << pos;
-			pos += nbits;
-			bitPosition += nbits;
-			if (bitPosition >= 8) {
-				bitPosition -= 8;
-				index++;
-			}
-		}
+		int nb = n + bitPosition;
+		int shift = 0;
+		long work = 0;
+		do {
+			work |= ((long)buf[index++] & 0xff) << shift;
+			shift += 8;
+			nb -= 8;
+		} while (nb > 0);
+		
+		if (nb < 0) 
+			index--;
+		
+		int res = (int) (work >>> bitPosition);
+		bitPosition = nb < 0 ? nb + 8 : 0;
 		if (n < 32)
 			res &= ((1 << n) - 1);
 		return res;
@@ -137,6 +142,6 @@ public class BitReader {
 	}
 
 	public int getBitPosition() {
-		return (index - offset) * 8 + bitPosition ;
+		return (index - offset) * 8 + bitPosition;
 	}
 }

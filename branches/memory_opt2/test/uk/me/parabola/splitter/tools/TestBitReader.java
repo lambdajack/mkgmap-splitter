@@ -157,12 +157,25 @@ public class TestBitReader {
 	
 	@Test
 	public void positionedRead() {
-		BitReader br = new BitReader(new byte[]{
-				(byte) 0xf1, 0x73, (byte) 0xc2, 0x5
-		});
+		BitReader br = new BitReader(new byte[] { (byte) 0xf1, 0x73, (byte) 0xc2, 0x5 });
 
 		br.position(10);
 		assertEquals("sixteen bits at pos 10", 0x709c, br.get(16));
 		
+	}
+
+	@Test
+	public void positionedReadWithOffset() {
+		BitReader br = new BitReader(new byte[] {0, (byte) 0xf1, 0x73, (byte) 0xc2, 0x5}, 1);
+
+		int pos = 10;
+		br.position(pos);
+		assertEquals("sixteen bits at pos " + pos, 0x709c, br.get(16));
+		br.skip(-16);
+		assertEquals("sixteen bits at pos " + pos, 0x709c, br.get(16));
+		br.skip(-2);
+		br.skip(-15);
+		br.skip(1);
+		assertEquals("sixteen bits at pos " + pos, 0x709c, br.get(16));
 	}
 }
