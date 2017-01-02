@@ -20,6 +20,7 @@ import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.ints.Int2IntLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntBidirectionalIterator;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import uk.me.parabola.splitter.Utils;
 
@@ -65,18 +66,13 @@ import uk.me.parabola.splitter.Utils;
  */
 
 public final class SparseLong2IntMap {
-	/** the part of the key that is not saved in the top HashMap. */
-	private static final long CHUNK_ID_MASK = 0x7ffffffL; 		
-	private static final long TOP_ID_MASK = ~CHUNK_ID_MASK;  	// the part of the key that is saved in the top HashMap
-	private static final int TOP_ID_SHIFT = Long.numberOfTrailingZeros(TOP_ID_MASK);
-
+	private static final boolean SELF_TEST = false;
 	private static final int CHUNK_SIZE = 64; 					// 64  = 1<< 6 (last 6 bits of the key)
-	/** Number of entries addressed by one topMap entry. */
-	private static final int LARGE_VECTOR_SIZE = (int) (CHUNK_ID_MASK / CHUNK_SIZE + 1);
-	private static final int CHUNK_STORE_BITS_FOR_Z = 5; // must fit into byte field 
-	private static final int CHUNK_STORE_BITS_FOR_Y = Integer.numberOfTrailingZeros(LARGE_VECTOR_SIZE) - CHUNK_STORE_BITS_FOR_Z + 1; 
-	private static final int CHUNK_STORE_BITS_FOR_X = 8; // values 1 .. 256 are stored as 0..255
-	
+	private static final int MAX_BYTES_FOR_VAL = Integer.BYTES;
+	private static final int MAX_STORED_BYTES_FOR_CHUNK = CHUNK_SIZE * MAX_BYTES_FOR_VAL;
+	private static final int CHUNK_STORE_BITS_FOR_X = Integer.SIZE - Integer.numberOfLeadingZeros(MAX_STORED_BYTES_FOR_CHUNK-1); // values 1 .. 256 are stored as 0..255
+	private static final int CHUNK_STORE_BITS_FOR_Z = 6; // must fit into byte field 
+	private static final int CHUNK_STORE_BITS_FOR_Y = Integer.SIZE - (CHUNK_STORE_BITS_FOR_X + CHUNK_STORE_BITS_FOR_Z);  	
 	private static final int CHUNK_STORE_ELEMS = 1 << CHUNK_STORE_BITS_FOR_Z;
 	private static final int CHUNK_STORE_X_MASK = (1 << CHUNK_STORE_BITS_FOR_X) - 1;
 	private static final int CHUNK_STORE_Y_MASK = (1 << CHUNK_STORE_BITS_FOR_Y) - 1;
@@ -84,6 +80,13 @@ public final class SparseLong2IntMap {
 	private static final int CHUNK_STORE_Y_SHIFT = CHUNK_STORE_BITS_FOR_X;
 	private static final int CHUNK_STORE_Z_SHIFT = CHUNK_STORE_BITS_FOR_X + CHUNK_STORE_BITS_FOR_Y;
 
+	/** Number of entries addressed by one topMap entry. */
+	private static final int TOP_ID_SHIFT = 27; // must be below 32, smaller values give smaller LARGE_VECTOR_SIZEs and more entries in the top HashMap 
+	/** the part of the key that is not saved in the top HashMap. */
+	private static final long CHUNK_ID_MASK = (1L << (TOP_ID_SHIFT)) - 1;
+ 
+	/** Number of entries addressed by one topMap entry. */
+	private static final int LARGE_VECTOR_SIZE = (int) (CHUNK_ID_MASK / CHUNK_SIZE + 1);
 	private static final int MAX_Y_VAL = LARGE_VECTOR_SIZE / CHUNK_STORE_ELEMS + 1;
 	/** The part of the key that contains the offset in the chunk. */
 	private static final long CHUNK_OFFSET_MASK = CHUNK_SIZE - 1;		
@@ -100,11 +103,11 @@ public final class SparseLong2IntMap {
 
 	private long currentChunkId;
 	private final int [] currentChunk = new int[CHUNK_SIZE]; // stores the values in the real position
+	private final int [] testChunk = new int[CHUNK_SIZE]; // for internal test 
 	private final int [] maskedChunk = new int[CHUNK_SIZE]; // a chunk after applying the "mask encoding"
 	private final int[] tmpChunk = new int[CHUNK_SIZE * 2]; // used for tests of compression methods
 	private static final int MAX_BYTES_FOR_RLE_CHUNK = CHUNK_SIZE * (Integer.BYTES + 1);
 	private final ByteBuffer bufEncoded = ByteBuffer.allocate(MAX_BYTES_FOR_RLE_CHUNK); // for the RLE-compressed chunk
-	private static final int MAX_STORED_BYTES_FOR_CHUNK = CHUNK_SIZE * Integer.BYTES;
 	
 	// bit masks for the flag byte
 	private static final int FLAG_USED_BYTES_MASK = 0x03; // number of bytes - 1 
@@ -112,6 +115,11 @@ public final class SparseLong2IntMap {
 	private static final int FLAG_COMP_METHOD_BITS = 0x40; // rest of vals are "bit" encoded 
 	private static final int FLAG_COMP_METHOD_RLE = 0x80; // values are run length encoded
 
+	private static final int FLAG2_DICTIONARY = 0x80;  
+	private static final int FLAG_BITS_FOR_DICT_SIZE = Integer.SIZE - Integer.numberOfLeadingZeros(CHUNK_SIZE-1);  
+	
+	long[] useMethods = new long[10]; 
+	int method; 
 	// for statistics
 	private final String dataDesc;
 	
@@ -134,7 +142,7 @@ public final class SparseLong2IntMap {
 	 */
 	public SparseLong2IntMap(String dataDesc) {
 		long reserve = (1L << CHUNK_STORE_BITS_FOR_Y - 1) * CHUNK_SIZE - LARGE_VECTOR_SIZE;
-		assert reserve > 0;
+		assert reserve > 0: "Bad combination of constants";
 		this.dataDesc = dataDesc;
 		System.out.println(dataDesc + " Map: uses " + this.getClass().getSimpleName());
 		clear();
@@ -302,7 +310,9 @@ public final class SparseLong2IntMap {
 		int opos = 0;
 		int maxRunLen = 0;
 		int numCounts = 0;
-		boolean twoValsOnly = true;
+		Int2IntLinkedOpenHashMap dict = new Int2IntLinkedOpenHashMap(64, Hash.VERY_FAST_LOAD_FACTOR);
+		dict.defaultReturnValue(-1);
+
 		for (int i = 0; i < numVals; i++) {
 			int runLength = 1;
 			while (i+1 < numVals && maskedChunk[i] == maskedChunk[i+1]) {
@@ -310,16 +320,15 @@ public final class SparseLong2IntMap {
 				i++;
 			}
 			numCounts++;
-			if (numCounts > 2 && twoValsOnly) {
-				if (maskedChunk[i] != tmpChunk[0] && maskedChunk[i] != tmpChunk[2]) 
-					twoValsOnly = false;
-			}
-			tmpChunk[opos++] = maskedChunk[i];
+			int v = maskedChunk[i];
+			if (dict.get(v) == dict.defaultReturnValue())
+				dict.put(v, dict.size());
+			tmpChunk[opos++] = v;
 			tmpChunk[opos++] = runLength;
-			maxRunLen = Math.max(maxRunLen, runLength);
+			if (maxRunLen < runLength)
+				maxRunLen = runLength;
 		}
 		int testBias = maskedChunk[0];
-
 		int bits1 = Math.max(bitsNeeded(minVal), bitsNeeded(maxVal)); 
 		int bits2 = Math.max(bitsNeeded(minVal-testBias), bitsNeeded(maxVal-testBias));
 		int bits;
@@ -336,58 +345,73 @@ public final class SparseLong2IntMap {
 		bitWriter.clear();
 		// try to find out if compression will help
 		int bitsRunLength = bitsNeeded(maxRunLen-1) - 1; // we always have positive values and we store the len decremented by 1
-		int pos = 0;
 		int bias = bias2;
 		int bytesForBias = 0;
 		if ((flag & FLAG_COMP_METHOD_DELTA) == 0) {
-			storeVal(tmpChunk[pos++], bits, sign);
+			storeVal(tmpChunk[0], bits, sign);
 		} else {
-			pos++;
 			bytesForBias = bytesNeeded(bias2, bias2);
 			flag |= (bytesForBias - 1) & FLAG_USED_BYTES_MASK ;
 		}
 		int bitsToUse = bits - Math.abs(sign);
-		int added = numCounts * bitsRunLength;
-		int saved = (numVals - numCounts) * bitsToUse;
-		if (added > saved && !twoValsOnly) {
-			long dd = 4;
+		int bitsForPos = bitsNeeded(dict.size()-1) - 1;
+		int bitsForDictFlag = 1 + (dict.size() > 2 ? FLAG_BITS_FOR_DICT_SIZE : 0);
+		int bitsForDict = bitsForDictFlag + (dict.size() - 1) * bitsToUse; 
+		int len1 = toBytes(numVals * bitsToUse);
+		int len2 = toBytes(numCounts * (bitsToUse + bitsRunLength));
+		int len3 = toBytes(bitsForDict + numVals * bitsForPos);
+		int len4 = toBytes(bitsForDict + numCounts * (bitsRunLength + dict.size() > 2 ? bitsForPos : 0));
+		boolean useRLE = maxRunLen > 1 && (Math.min(len2, len4) < Math.min(len1, len3));
+		boolean useDict = (useRLE) ? len2 > len4 : len1 > len3;
+		if (useRLE & useDict)
+			method = 3;
+		else if (useRLE & !useDict)
+			method = 4;
+		else if (!useRLE & useDict)
+			method = 5;
+		else if (!useRLE & !useDict)
+			method = 6;
+//		System.out.println(len1 + " " + len2 + " " + len3 + " " + len4 + " " + useDict + " " + useRLE + " "  + dict.size());
+		if (SELF_TEST && currentChunkId == 203940864) {
+			System.out.println(Arrays.toString(currentChunk));
+			System.out.println(Arrays.toString(Arrays.copyOfRange(maskedChunk, 0, numVals)));
+			System.out.println(Arrays.toString(Arrays.copyOfRange(tmpChunk, 0, opos)));
 		}
-		int distintVals = 2;
-		if (numCounts > 3 && !twoValsOnly && bitsToUse > 2) {
-			Int2IntLinkedOpenHashMap test = new Int2IntLinkedOpenHashMap();
-			test.defaultReturnValue(-1);
-			for (int j = 0; j < opos; j += 2) {
-				if (test.get(tmpChunk[j]) == -1)
-					test.put(tmpChunk[j],j>>1);
+		if (useDict) {
+			bitWriter.put1(dict.size() == 2);
+			if (dict.size() > 2) 
+				bitWriter.putn(dict.size() - 1, FLAG_BITS_FOR_DICT_SIZE);
+			IntBidirectionalIterator iter = dict.keySet().iterator();
+			iter.next();
+			while (iter.hasNext()) {
+				storeVal(iter.nextInt() - bias, bits, sign);
 			}
-			distintVals = test.size();
-			int bitsForPos = bitsNeeded(distintVals) - 1;
-			int len1 = distintVals * bitsToUse + numCounts * bitsForPos ;
-			int len2 = numCounts * bitsToUse;
-			System.out.println((len2 - len1) + " " + numCounts + " " + distintVals + " " + bitsToUse + " " + len1 + " " + len2 + " " + (len1 <= len2));
 		}
 
-
-		if (added < saved) {
+		if (useRLE) {
+			boolean writeIndex = useDict & (dict.size() > 2);
+			int pos = 1; // first val is written with different method
 			flag |= FLAG_COMP_METHOD_RLE;
 			flag |= (bitsRunLength & 0x07) << 2;
-			storeRunlen(tmpChunk[pos++] - 1, bitsRunLength);
+			bitWriter.putn(tmpChunk[pos++] - 1, bitsRunLength);
 			while (pos < opos) {
-				if (!twoValsOnly || pos == 2) {
-					storeVal(tmpChunk[pos++] - bias, bits, sign);
-				} else {
-					// we don't need the values again when we know that there are only two
-					pos++; 
+				int v = tmpChunk[pos++];
+				if (!useDict)
+					storeVal(v - bias, bits, sign);
+				else {
+					if (writeIndex) {
+						int idx = dict.get(v);
+						bitWriter.putn(idx, bitsForPos);
+					}
 				}
-				storeRunlen(tmpChunk[pos++] - 1, bitsRunLength);
+				bitWriter.putn(tmpChunk[pos++] - 1, bitsRunLength);
 			}
 		} else {
-			if (twoValsOnly && maxRunLen > 1)
-				twoValsOnly = false;
-			if (twoValsOnly)
-				storeVal(tmpChunk[2] - bias, bits, sign);
-			else {
-				for (int i = 1; i < numVals; i++) {
+			for (int i = 1; i < numVals; i++) { // first val is written with different method
+				if (useDict) {
+					int v = maskedChunk[i];
+					bitWriter.putn(dict.get(v), bitsForPos);
+				} else {
 					storeVal(maskedChunk[i] - bias, bits, sign);
 				}
 			}
@@ -403,8 +427,8 @@ public final class SparseLong2IntMap {
 				flag2 |= 0x20;
 			else if (sign < 0)
 				flag2 |= 0x40;
-			if (twoValsOnly)
-				flag2 |= 0x80;
+			if (useDict)
+				flag2 |= FLAG2_DICTIONARY;
 			bufEncoded.put((byte) flag2); // number of bits for the delta encoded values
 			if ((flag & FLAG_COMP_METHOD_DELTA) != 0) {
 				putVal(bufEncoded, bias2, bytesForBias);
@@ -412,6 +436,7 @@ public final class SparseLong2IntMap {
 
 			bufEncoded.put(bw.getBytes(), 0, bw.getLength());
 		} else {
+			method = 7;
 			// no flag byte for worst case 
 			for (int i = 0; i < numVals; i++){
 				putVal(bufEncoded, maskedChunk[i], 4);
@@ -420,6 +445,15 @@ public final class SparseLong2IntMap {
 		return;
 	}
 	
+	/**
+	 * calculate the number of bytes consumed by given a number of bits
+	 * @param nBits the number of bits
+	 * @return the number of bytes needed to store the bits
+	 */
+	private static int toBytes(int nBits) {
+		return (nBits + 7) / 8;
+	}
+
 	private void storeVal(int val, int nb, int sign) {
 		if (sign == 0)
 			bitWriter.sputn(val, nb);
@@ -449,9 +483,6 @@ public final class SparseLong2IntMap {
 		}
 	}
 
-	private void storeRunlen (int val, int nb) {
-		bitWriter.putn(val, nb);
-	}
 	/**
 	 * Try to compress the data in currentChunk and store the result in the chunkStore. 
 	 */
@@ -480,18 +511,32 @@ public final class SparseLong2IntMap {
 			elementMask <<= 1;
 		}
 		bufEncoded.clear();
+		method = 0;
 		if (minVal == maxVal) {
+			method = 1;
 			// nice: single value chunk 
 			int bytesFor1st = bytesNeeded(minVal, maxVal);
 			if (bytesFor1st > 2) {
+				method=2;
 				bufEncoded.put((byte) (bytesFor1st - 1)); // flag byte
 			}
 			putVal(bufEncoded, maskedChunk[0], bytesFor1st);
 		} else {
 			chunkCompress(simpleLen, minVal, maxVal);
 		}
+		++useMethods[method];
 		bufEncoded.flip();
-		putChunk(currentChunkId, bufEncoded, mask);
+		putChunk(mask);
+		if (SELF_TEST) {
+			Arrays.fill(testChunk, unassigned);
+			decodeStoredChunk(getMemPos(currentChunkId), testChunk, -1);
+			for (int i = 0; i < CHUNK_SIZE; i++) {
+				if (testChunk[i] != currentChunk[i]) {
+					assert false : "current chunk id=" + currentChunkId + " key=" + (currentChunkId + i)
+							+ " doesn't match " + testChunk[i] + "<>" + currentChunk[i]; 
+				}
+			}
+		}
 	}
 
 	/**
@@ -574,20 +619,25 @@ public final class SparseLong2IntMap {
 			flag = inBuf.get();
 			if ((flag & FLAG_COMP_METHOD_BITS) != 0) {
 				inBuf.position(inBuf.position() - 1);
-				return decodeBits(mp, targetChunk, chunkOffset, inBuf);
+				int val = decodeBits(mp, targetChunk, chunkOffset, inBuf);
+				return val;
 			}
 			bytesToUse = (flag & FLAG_USED_BYTES_MASK) + 1;	
 		}
 		int bias = bias1;
 		int start = bias + getVal(inBuf, bytesToUse);
-		boolean singleValueChunk = (chunkLen <= 2 || chunkLen == 1 + bytesToUse);
+		boolean isSingleValueChunk = (chunkLen <= 2 || chunkLen == 1 + bytesToUse);
 
-		if (targetChunk == null && singleValueChunk) {
+		if (targetChunk == null && isSingleValueChunk) {
 			return start;
+		}
+		if (chunkLen != MAX_STORED_BYTES_FOR_CHUNK && targetChunk == null) {
+			assert false : chunkLen;
 		}
 		long chunkMask = mp.getMask();
 		int index = CHUNK_SIZE + 1; 
 		if (targetChunk == null) {
+			assert chunkMask == -1 : "mask not -1";
 			// we only want to retrieve one value for the index
 			index = countUnder(chunkMask, chunkOffset); 
 			if (index == 0 )
@@ -603,31 +653,20 @@ public final class SparseLong2IntMap {
 			}
 		}
 		int val = start;
-		if (targetChunk == null && (flag & FLAG_COMP_METHOD_RLE) == 0) {
+		if (targetChunk == null) {
 			// use shortcut, we can calculate the position of the wanted value
 			inBuf.position(inBuf.position() + (index-1) * bytesToUse);
 			return val = bias + getVal(inBuf, bytesToUse); 
 		}
 		// loop through the values
 		while (inBuf.hasRemaining()) {
-			if ((flag & FLAG_COMP_METHOD_RLE) != 0) {
-				int runLength = inBuf.get();
-				index -= runLength - 1;
-				if (index <= 0)
-					return val;
-				while (--runLength > 0) {
-					maskedChunk[mPos++] = val;
-				}
-				if (!inBuf.hasRemaining())
-					break;
-			}
 			val = bias + getVal(inBuf, bytesToUse);
 			if (--index <= 0)
 				return val;
 			maskedChunk[mPos++] = val;
 			
 		}
-		updateTargetChunk(targetChunk, chunkMask, singleValueChunk);
+		updateTargetChunk(targetChunk, chunkMask, isSingleValueChunk);
 		return unassigned; 
 	}
 
@@ -665,7 +704,6 @@ public final class SparseLong2IntMap {
 			// we only want to retrieve one value for the index
 			index = countUnder(chunkMask, chunkOffset); 
 		}
-		int origIndex = index;
 		int bitsFlag = inBuf.get();
 		int bits = (bitsFlag & 0x1f) + 1;
 		int sign = 0;
@@ -673,8 +711,7 @@ public final class SparseLong2IntMap {
 			sign = 1;
 		else if ((bitsFlag & 0x40) != 0)
 			sign = -1;
-		boolean twoValsOnly = (bitsFlag & 0x80) != 0;
-
+		boolean useDict = (bitsFlag & FLAG2_DICTIONARY) != 0;
 		assert bits >= 1;
 		BitReader br;
 		int bias = bias1;
@@ -689,62 +726,63 @@ public final class SparseLong2IntMap {
 			br = new BitReader(inBuf.array(), inBuf.position());
 			val = readVal(br, bits, sign) + bias;
 		}
-		if (--index < 0)
+		if (index == 0)
 			return val;
-		if (targetChunk == null && (flag & FLAG_COMP_METHOD_RLE) == 0) {
-			// shortcut: we can calculate the position of the value in the bit stream
-			if (twoValsOnly) {
-				if ((origIndex & 0x01) == 0) 
-					return val; // even index: return first val
-			} else {
-				if (index > 0) {
-					int bitPos;
-					int bitsToUse = bits - Math.abs(sign); 
-					bitPos = br.getBitPosition() + index * bitsToUse;
-					br.position(bitPos);
-				} 
+		int dictSize = 2;
+		if (useDict) {
+			boolean sizeIs2 = br.get1();
+			if (!sizeIs2)
+				dictSize = br.get(FLAG_BITS_FOR_DICT_SIZE) + 1;
+		}
+		int[] dict = new int[dictSize];
+		if (useDict) {
+			dict[0] = val;
+			for (int i = 1; i < dictSize; i++) {
+				dict[i] = readVal(br, bits, sign) + bias;
 			}
+		}
+		boolean useRLE = (flag & FLAG_COMP_METHOD_RLE) != 0;
+		boolean readIndex = dictSize > 2 || !useRLE;
+		int bitsForPos = bitsNeeded(dictSize - 1) - 1; 
+		
+		if (targetChunk == null && !useRLE) {
+			// shortcut: we can calculate the position of the value in the bit stream
+			if (useDict) {
+				br.skip((index-1) * bitsForPos);
+				int dictPos = br.get(bitsForPos);
+				return dict[dictPos]; 
+			}
+			// unlikely 
+			int bitsToUse = bits - Math.abs(sign); 
+			br.skip((index-1) * bitsToUse);
 			return readVal(br, bits, sign) + bias;
 		}
 		int runLength;
-		int bitsForRLE = 0; 
-		if ((flag & FLAG_COMP_METHOD_RLE) != 0) {
-			bitsForRLE = (flag >> 2) & 0x07;
-			runLength = br.get(bitsForRLE) + 1;
-			index -= runLength - 1;
-			if (index < 0)
-				return val;
-		} else 
-			runLength = 1;
-		tmpChunk[0] = val;
+		int bitsForRLE = useRLE ? ((flag >> 2) & 0x07) : 0;
 		int mPos = 0;
-		if (targetChunk != null) {
-			while (--runLength >= 0) {
-				maskedChunk[mPos++] = val;
-			}
-		}
-		int tmpPos = 1;
-		while (mPos < CHUNK_SIZE && br.getBitPosition() + bits + bitsForRLE <= (inBuf.position() + inBuf.remaining()) * 8) {
-			if (!twoValsOnly || tmpPos == 1) {
-				val = readVal(br, bits, sign) + bias;
-				tmpChunk[tmpPos] = val;
-			} else {
-				val = tmpChunk[tmpPos & 0x01];
-			}
-			tmpPos++;
-			if (--index < 0)
+		int dictPos = 0;
+		int nVals = 0;
+		int n = Long.bitCount(chunkMask);
+		while (true) {
+			if (useRLE) {
+				runLength = br.get(bitsForRLE) + 1;
+				nVals += runLength;
+			} else
+				nVals++;
+			if (index < nVals)
 				return val;
-			if ((flag & FLAG_COMP_METHOD_RLE) != 0) {
-				runLength = br.get(bitsForRLE) + 1; 
-				index -= runLength - 1;
-				if (index < 0)
-					return val;
-			} else 
-				runLength = 1;
 			if (targetChunk != null) {
-				while (--runLength >= 0) {
+				do {
 					maskedChunk[mPos++] = val;
-				}
+				} while (mPos < nVals);
+			}
+			if (nVals >= n)
+				break;
+			if (useDict) {
+				dictPos = readIndex ? br.get(bitsForPos) :  (dictPos == 0) ? 1 : 0;;
+				val = dict[dictPos];
+			} else {
+				val = readVal(br, bits, sign) + bias;
 			}
 		}
 		updateTargetChunk(targetChunk, chunkMask, false);
@@ -797,6 +835,7 @@ public final class SparseLong2IntMap {
 		decodeStoredChunk(mp, currentChunk, -1);
 	}
 
+	
 	/**
 	 * Returns the value to which the given key is mapped or the {@code unassigned} value.
 	 * @param key the key
@@ -846,16 +885,15 @@ public final class SparseLong2IntMap {
 		unassigned = arg0;
 	}
 
-	private void putChunk(long key, ByteBuffer bb, long mask) {
-		long topID = key >> TOP_ID_SHIFT;
+	private void putChunk(long mask) {
+		long topID = currentChunkId >> TOP_ID_SHIFT;
 		Mem mem = topMap.get(topID);
 		if (mem == null) {
 			mem = new Mem(topID);
 			topMap.put(topID, mem);
 		}
 
-		int chunkid = (int) (key & CHUNK_ID_MASK) / CHUNK_SIZE;
-		int len = bb.limit();
+		int len = bufEncoded.limit();
 		int x = len - 1;
 		if (storedLengthOfCurrentChunk > 0) {
 			// this is a rewrite, add the previously used chunk to the reusable list
@@ -867,6 +905,9 @@ public final class SparseLong2IntMap {
 				mem.estimatedBytes += 20; // estimate for the hash map entry
 			}
 			reusableChunk.add(currentChunkIdInStore);
+			if (reusableChunk.size() > 1) {
+				long dd = 4;
+			}
 		}
 		if (mem.chunkStore[x] == null) {
 			mem.startStore(x);
@@ -900,7 +941,7 @@ public final class SparseLong2IntMap {
 
 		mem.maskStore[x][y][z] = mask;
 		ByteBuffer storeBuf = ByteBuffer.wrap(store, z * len + 1, len);
-		storeBuf.put(bb);
+		storeBuf.put(bufEncoded);
 	
 		// calculate the position in the large vector
 		y++; // we store the y value incremented by 1
@@ -912,7 +953,8 @@ public final class SparseLong2IntMap {
 				| (x & CHUNK_STORE_X_MASK);
 
 		assert idx != 0;
-		mem.largeVector[chunkid] = idx;
+		int vectorPos = (int) (currentChunkId & CHUNK_ID_MASK) / CHUNK_SIZE;
+		mem.largeVector[vectorPos] = idx;
 	}
 
 	/**
@@ -955,6 +997,7 @@ public final class SparseLong2IntMap {
 				((totalChunks==0) ? 0 :(size() / totalChunks)) + ".");
 		System.out.println(dataDesc + " Map details: bytes ~" + Utils.format(totalBytes/1024/1024) + " MB, including " +
 				topMap.size() + " array(s) with " + LARGE_VECTOR_SIZE * Integer.BYTES/1024/1024 + " MB");  
+		System.out.println(dataDesc + " Compression methods" + Arrays.toString(useMethods));
 		System.out.println();
 	}
 
