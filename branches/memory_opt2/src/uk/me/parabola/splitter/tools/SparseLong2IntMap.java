@@ -339,16 +339,15 @@ public final class SparseLong2IntMap {
 		int bits = Math.max(bitsNeeded(minVal - bias2), bitsNeeded(maxVal - bias2));
 		int sign = getSign(minVal - bias2, maxVal - bias2);
 		// try to find out if compression will help
-		int bitsRunLength = bitsNeeded(maxRunLen-1) - 1; // we always have positive values and we store the len decremented by 1
+		int bitsForRLE = bitsNeeded(maxRunLen-1) - 1; // we always have positive values and we store the len decremented by 1
 		int bitsForVal = bits - Math.abs(sign);
 		int bitsForPos = bitsNeeded(dict.size() - 1) - 1;
 		int bitsForDictFlag = dict.size() > 2 ? FLAG_BITS_FOR_DICT_SIZE : 0;
 		int bitsForDict = bitsForDictFlag + (dict.size() - 1) * bitsForVal;
 		int len1 = toBytes((numVals - 1) * bitsForVal);
-		int len2 = toBytes(numCounts * (bitsForVal + bitsRunLength));
+		int len2 = toBytes(bitsForRLE + (numCounts - 1) * (bitsForRLE + bitsForVal));
 		int len3 = toBytes(bitsForDict + (numVals - 1) * bitsForPos);
-		int len4 = toBytes(bitsForDict + numCounts * (bitsRunLength + (dict.size() > 2 ? bitsForPos : 0)));
-		
+		int len4 = toBytes(bitsForDict + bitsForRLE + (numCounts - 1) * (bitsForRLE + (dict.size() > 2 ? bitsForPos : 0)));
 		boolean useRLE = numCounts < 5 && maxRunLen > 1 && (Math.min(len2, len4) < Math.min(len1, len3));
 		boolean useDict = (useRLE) ? len2 > len4 : len1 > len3;
 		if (useRLE & useDict)
@@ -359,6 +358,7 @@ public final class SparseLong2IntMap {
 			method = 5;
 		else if (!useRLE & !useDict)
 			method = 6;
+		
 //		System.out.println(len1 + " " + len2 + " " + len3 + " " + len4 + " " + useDict + " " + useRLE + " "  + dict.size() + " " + numCounts);
 //		if (useRLE && numVals / 2 < numCounts) {
 //			long dd = 4;
@@ -377,11 +377,11 @@ public final class SparseLong2IntMap {
 
 		if (useRLE) {
 			flag1 |= FLAG1_COMP_METHOD_RLE;
-			flag1 |= ((bitsRunLength << 2) & FLAG1_RUNLEN_MASK) ;
+			flag1 |= ((bitsForRLE << 2) & FLAG1_RUNLEN_MASK) ;
 			boolean writeIndex = useDict & (dict.size() > 2);
 			int pos = 1; // first val is written with different method
 			
-			bitWriter.putn(tmpChunk[pos++] - 1, bitsRunLength);
+			bitWriter.putn(tmpChunk[pos++] - 1, bitsForRLE);
 			while (pos < opos) {
 				int v = tmpChunk[pos++];
 				if (!useDict)
@@ -392,7 +392,7 @@ public final class SparseLong2IntMap {
 						bitWriter.putn(idx, bitsForPos);
 					}
 				}
-				bitWriter.putn(tmpChunk[pos++] - 1, bitsRunLength);
+				bitWriter.putn(tmpChunk[pos++] - 1, bitsForRLE);
 			}
 		} else {
 			for (int i = 1; i < numVals; i++) { // first val is written with different method
@@ -404,14 +404,22 @@ public final class SparseLong2IntMap {
 				}
 			}
 		}
-		BitWriter bw; 
-		bw = bitWriter;
 		bufEncoded.clear();
 		int bytesForBias = 0;
 		bytesForBias = bytesNeeded(bias2, bias2);
 		flag1 |= (bytesForBias - 1) & FLAG1_USED_BYTES_MASK;
-		
-		int len = 1 + 1 + bw.getLength() + bytesForBias;
+		int bwLen = bitWriter.getLength();
+		if (SELF_TEST) {
+			if (useRLE && useDict && len4 != bwLen)
+				assert false : "len4 " + bwLen + " <> " + len4;
+			if (!useRLE && useDict && len3 != bwLen)
+				assert false : "len3 " + bwLen + " <> " + len3;
+			if (useRLE && !useDict && len2 != bwLen)
+				assert false : "len2 " + bwLen + " <> " + len2;
+			if (!useRLE && !useDict && len1 != bwLen)
+				assert false : "len1 " + bwLen + " <> " + len1;
+		}
+		int len = 1 + 1 + bitWriter.getLength() + bytesForBias;
 		if (len < MAX_STORED_BYTES_FOR_CHUNK) {
 			bufEncoded.put((byte) flag1);
 			int flag2 = (bits - 1) & FLAG2_BITS_FOR_VALS; // number of bits for the delta encoded values
@@ -424,7 +432,7 @@ public final class SparseLong2IntMap {
 			bufEncoded.put((byte) flag2); 
 			putVal(bufEncoded, bias2, bytesForBias);
 
-			bufEncoded.put(bw.getBytes(), 0, bw.getLength());
+			bufEncoded.put(bitWriter.getBytes(), 0, bitWriter.getLength());
 		} else {
 			method = 7;
 			// no flag byte for worst case 
