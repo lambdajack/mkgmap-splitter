@@ -92,7 +92,8 @@ public class TestCustomCollections {
 		map.put(1, 0); // trigger saving of chunk
 		key = 128;
 		for (int val : vals) {
-			assertEquals("values " + vals.toString(), val, map.get(idOffset + key++));
+			assertEquals("values " + vals.toString() + " key=" + key, val, map.get(idOffset + key));
+			key++;
 		}
 		assertEquals(UNASSIGNED, map.get(idOffset + key++));
 		map.clear();
