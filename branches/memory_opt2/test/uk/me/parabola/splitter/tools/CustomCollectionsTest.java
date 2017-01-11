@@ -16,6 +16,7 @@ package uk.me.parabola.splitter.tools;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +27,7 @@ import org.junit.Test;
 /**
  * 
  */
-public class TestCustomCollections {
+public class CustomCollectionsTest {
 
 	//@Test(expectedExceptions = IllegalArgumentException.class)
 	//public void testInit() {
@@ -85,37 +86,49 @@ public class TestCustomCollections {
 		map.put(1, -12000);
 		long key = 128;
 		for (int val : vals) {
-			if (val != UNASSIGNED)
-				map.put(idOffset + key, val);
-			key++;
+			map.put(idOffset + key++, val);
 		}
 		map.put(1, 0); // trigger saving of chunk
 		key = 128;
 		for (int val : vals) {
-			assertEquals("values " + vals.toString() + " key=" + key, val, map.get(idOffset + key));
-			key++;
+			assertEquals("values " + vals.toString(), val, map.get(idOffset + key++));
 		}
-		assertEquals(UNASSIGNED, map.get(idOffset + key++));
 		map.clear();
 	}
 
 	@Test
 	public void testSparseLong2IntMap() {
+		ByteBuffer buf = ByteBuffer.allocate(4);
+		for (int i = 0; i < 32; i++) {
+			int val = 1 << i;
+			do {
+				for (int j = 1; j <= 4; j++) {
+					int bytesToUse = j;
+					if (bytesToUse == 1 && val >= Byte.MIN_VALUE && val <= Byte.MAX_VALUE
+							|| bytesToUse == 2 && val >= Short.MIN_VALUE && val <= Short.MAX_VALUE
+							|| bytesToUse == 3 && val >= -0x800000 && val <= 0x7fffff) {
+						buf.clear();
+						SparseLong2IntMap.putVal(buf, val, bytesToUse);
+						buf.flip();
+						assertEquals(SparseLong2IntMap.getVal(buf, bytesToUse), val);
+					}
+				}
+				val = ~val;
+			} while (val < 0);
+		}
+
 		testMap(0L);
 		testMap(-10000L);
 		testMap(1L << 35);
 		testMap(-1L << 35);
 	}
 
-	private static int UNASSIGNED = Short.MIN_VALUE;
+	private static int UNASSIGNED = Integer.MIN_VALUE;
 	private static void testMap(long idOffset) {
 		SparseLong2IntMap map = new SparseLong2IntMap("test");
 		map.defaultReturnValue(UNASSIGNED);
 
 		// special patterns
-
-		testVals(map, idOffset, Arrays.asList(-32768, -32764, -32764, -32768, -32764, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32761, -32761, -32768, -32761, -32768, -32761, -32768, -32768, -32768, -32768, -32768, -32768, -32768));
-		testVals(map, idOffset, Arrays.asList(2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2));
 		testVals(map, idOffset, Arrays.asList(1,2,1,1,1,2,1,1,2,1,1,2));
 		testVals(map, idOffset, Arrays.asList(1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2));
 		testVals(map, idOffset, Arrays.asList(66560, 7936, 7936, 6144));
@@ -136,42 +149,13 @@ public class TestCustomCollections {
 		testVals(map, idOffset, Arrays.asList(-1, 1, 200, 1));
 		testVals(map, idOffset, Arrays.asList(Integer.MIN_VALUE + 1, Integer.MIN_VALUE + 1, 1234));
 		testVals(map, idOffset, Arrays.asList(Integer.MIN_VALUE + 1, 1234, Integer.MIN_VALUE + 1));
-		
-		// test special read pattern
-		map.clear();
-		map.put(idOffset + 43, 29);
-		map.put(idOffset + 45, 29);
-		map.put(idOffset + 129, 0); // force save 
-		assertEquals(UNASSIGNED, map.get(idOffset + 9));
-		assertEquals(UNASSIGNED, map.get(idOffset + 58));
-		map.clear();
-		
-		List<Integer> vals = Arrays.asList(-32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32724, -32736, -32724, -32736, -32724, -32736, -32724, -32736);
-		for (int i = 0; i < vals.size(); i++) {
-			if (vals.get(i) != UNASSIGNED)
-				map.put(idOffset + i, vals.get(i));
-		}
-		map.put(-1,0);
-		for (int i = 0; i < vals.size(); i++) {
-			int v = vals.get(i);
-			assertEquals(v, map.get(idOffset + i));
-		}
-		
-		map.clear();
-		
+
 		for (int i = 1; i < 1000; i++) {
 			int j = map.put(idOffset + i, i);
 			assertEquals(UNASSIGNED, j);
 			assertEquals(i, map.size());
 		}
 
-		assertEquals(15, map.get(idOffset + 15));
-		assertEquals(3, map.get(idOffset + 3));
-		assertEquals(32, map.get(idOffset + 32));
-		assertEquals(3, map.get(idOffset + 3));
-		assertEquals(63, map.get(idOffset + 63));
-		assertEquals(64, map.get(idOffset + 64));
-		assertEquals(63, map.get(idOffset + 63));
 		for (int i = 1; i < 1000; i++) {
 			boolean b = map.containsKey(idOffset + i);
 			assertEquals(true, b);
@@ -297,7 +281,6 @@ public class TestCustomCollections {
 		for (int i = 100_000; i < 110_000; i++) {
 			assertEquals(i, map.get(idOffset + i));
 		}
-		map.clear();
 		Random random = new Random(101);
 		Map<Long,Integer> ref = new HashMap<>();
 		// special cases long chunks (all 64 values used and random
@@ -312,7 +295,7 @@ public class TestCustomCollections {
 		ref.entrySet().forEach(e -> {
 			long id = e.getKey();
 			int val = map.get(id);
-			assertEquals("id=" + id, (int) e.getValue(), val);
+			assertEquals(val, (int)e.getValue());
 		});
 		
 		
@@ -328,7 +311,7 @@ public class TestCustomCollections {
 		ref.entrySet().forEach(e -> {
 			long id = e.getKey();
 			int val = map.get(id);
-			assertEquals("id=" + id, (int) e.getValue(), val);
+			assertEquals(val, (int)e.getValue());
 		});
 	}
 }
