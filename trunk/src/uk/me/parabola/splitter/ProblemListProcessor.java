@@ -55,6 +55,7 @@ class ProblemListProcessor extends AbstractMapProcessor {
 	private final HashSet<String> wantedBoundaryAdminLevels = new HashSet<>();
 	
 	private final HashSet<String> wantedBoundaryTagValues;
+	private final HashSet<String> wantedRouteTagValues;
 	
 	ProblemListProcessor(DataStorer dataStorer, int areaOffset,
 			int numAreasThisPass, SplitterParams mainOptions) {
@@ -83,6 +84,13 @@ class ProblemListProcessor extends AbstractMapProcessor {
 			wantedBoundaryTagValues = new HashSet<>(Arrays.asList(boundaryTags));
 		}
 		setWantedAdminLevel(mainOptions.getWantedAdminLevel());
+		String routeRelationValuesParm = mainOptions.getRouteRelValues();
+		if (routeRelationValuesParm.isEmpty()) {
+			wantedRouteTagValues = null;
+		} else {
+			String[] routeValues = routeRelationValuesParm.split(Pattern.quote(","));
+			wantedRouteTagValues = new HashSet<>(Arrays.asList(routeValues));
+		}
 	}
 	
 	public void setWantedAdminLevel(int adminLevel) {
@@ -205,6 +213,8 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		boolean isMPRelType = false;
 		boolean hasBoundaryTag = false;
 		boolean isWantedBoundary = (wantedBoundaryTagValues == null) ? true:false;
+		boolean isRouteRelType = false;
+		boolean isWantedRoute = (wantedRouteTagValues == null) ? false : true;
 		Iterator<Element.Tag> tags = rel.tagsIterator();
 		String admin_level = null;
 		while(tags.hasNext()) {
@@ -214,6 +224,8 @@ class ProblemListProcessor extends AbstractMapProcessor {
 					useThis= true; // no need to check other tags
 				else if ("multipolygon".equals((t.value))  || "boundary".equals((t.value)))
 					isMPRelType= true;
+				else if ("route".equals(t.value))
+					isRouteRelType = true;
 				else if ("associatedStreet".equals((t.value))  || "street".equals((t.value)))
 					useThis= true; // no need to check other tags
 			} else if ("boundary".equals(t.key)){
@@ -228,7 +240,12 @@ class ProblemListProcessor extends AbstractMapProcessor {
 			} else if ("admin_level".equals(t.key)){
 				admin_level = t.value;
 			}
-			
+			if ("route".equals((t.value))) {
+				if (wantedRouteTagValues != null) {
+					if (wantedRouteTagValues.contains(t.value))
+						isWantedRoute = true;
+				}
+			} 			
 			if (useThis)
 				break;
 		}
@@ -237,7 +254,8 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		else if (isMPRelType && hasBoundaryTag  && admin_level != null){
 			if (wantedBoundaryAdminLevels.contains(admin_level))
 				useThis = true;
-		}
+		} else if (isRouteRelType && isWantedRoute)
+			useThis = true;
 		if (!useThis){
 			return;
 		}

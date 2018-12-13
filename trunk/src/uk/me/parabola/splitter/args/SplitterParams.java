@@ -112,7 +112,6 @@ public interface SplitterParams {
 			+ "Used to filter boundary relations for problem-list processing. Ignored when keep-complete is false.")
 	int getWantedAdminLevel();
 	
-	
 
 	@Option(defaultValue = "200000", description = "Search limit in split algo. Higher values may find better splits, but will take longer.")
 	int getSearchLimit();
@@ -123,4 +122,8 @@ public interface SplitterParams {
 	@Option(defaultValue = "false", description = "Specify if splitter should ignore bounds tags in input files")
 	boolean getIgnoreOsmBounds();
 
+	@Option(defaultValue="", description = "A comma separated list of tag values for route relations. " 
+			+ "Can be used to keep route relations of the given type complete. Only route values listed are kept complete. Default is empty.")
+	String getRouteRelValues();
+	
 }
