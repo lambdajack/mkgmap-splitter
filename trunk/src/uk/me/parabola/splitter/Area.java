@@ -92,13 +92,11 @@ public class Area {
 	}
 
 	public boolean verify(){
-		if (minLat > maxLat || minLong > maxLong
+		return ! (minLat > maxLat || minLong > maxLong
 				|| minLong < Utils.MIN_LON_MAP_UNITS
 				|| maxLong > Utils.MAX_LON_MAP_UNITS
 				|| minLat < Utils.MIN_LAT_MAP_UNITS
-				|| maxLat > Utils.MAX_LAT_MAP_UNITS)
-			return false;
-		return true;
+				|| maxLat > Utils.MAX_LAT_MAP_UNITS);
 	}
 	
 	
@@ -155,13 +153,13 @@ public class Area {
 		return maxLat - minLat;
 	}
 
+	@Override
 	public String toString() {
 		return "("
 				+ Utils.toDegrees(minLat) + ','
 				+ Utils.toDegrees(minLong) + ") to ("
 				+ Utils.toDegrees(maxLat) + ','
-				+ Utils.toDegrees(maxLong) + ')'
-				;
+				+ Utils.toDegrees(maxLong) + ')';
 	}
 
 	public String toHexString() {

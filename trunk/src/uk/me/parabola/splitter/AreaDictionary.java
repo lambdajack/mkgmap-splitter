@@ -64,7 +64,6 @@ public class AreaDictionary {
 		}
 		findSimpleNeigbours(rectangles, areaSets);
 		System.out.println("cached " + simpleNeighbours.size() + " combinations of areas that form rectangles.");
-		return;
 	}
 	
 	/**
@@ -105,18 +104,14 @@ public class AreaDictionary {
 			Rectangle r1 = rectangles.get(i);
 			for (int j = i + 1; j < rectangles.size(); j++) {
 				Rectangle r2 = rectangles.get(j);
-				boolean isSimple = false;
-				if (r1.y == r2.y && r1.height == r2.height && (r1.x == r2.getMaxX() || r2.x == r1.getMaxX()))
-					isSimple = true;
-				else if (r1.x == r2.x && r1.width == r2.width && (r1.y == r2.getMaxY() || r2.y == r1.getMaxY()))
-					isSimple = true;
+				boolean isSimple = r1.y == r2.y && r1.height == r2.height
+						&& (r1.x == r2.getMaxX() || r2.x == r1.getMaxX())
+						|| (r1.x == r2.x && r1.width == r2.width && (r1.y == r2.getMaxY() || r2.y == r1.getMaxY()));
 				if (isSimple) {
 					AreaSet simpleNeighbour = new AreaSet(areaSets.get(i));
 					simpleNeighbour.or(areaSets.get(j));
 					if (simpleNeighbour.cardinality() <= 10 && !simpleNeighbours.contains(simpleNeighbour)) {
 						simpleNeighbours.add(simpleNeighbour);
-						// System.out.println("simple neighbor: " +
-						// getMapIds(simpleNeighbour));
 						Rectangle pair = new Rectangle(r1);
 						pair.add(r2);
 						newRectangles.add(pair);
@@ -159,7 +154,7 @@ public class AreaDictionary {
 	}
 
 	public boolean mayCross(AreaSet areaSet) {
-		return simpleNeighbours.contains(areaSet) == false;
+		return !simpleNeighbours.contains(areaSet);
 	}
 	
 	public Area getArea(int idx) {

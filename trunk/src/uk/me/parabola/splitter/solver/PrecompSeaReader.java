@@ -19,7 +19,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
 import java.io.Reader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -28,6 +28,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.xmlpull.v1.XmlPullParserException;
+
 import crosby.binary.file.BlockInputStream;
 import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.SplitFailedException;
@@ -45,7 +46,7 @@ import uk.me.parabola.splitter.parser.OSMXMLParser;
 public class PrecompSeaReader {
 
 	/** The size (lat and long) of the precompiled sea tiles */
-	private final static int PRECOMP_RASTER = 1 << 15;
+	private static final int PRECOMP_RASTER = 1 << 15;
 
 	private static final byte SEA_TILE = 's';
 	private static final byte LAND_TILE = 'l';
@@ -57,7 +58,7 @@ public class PrecompSeaReader {
 	private static final int MAX_LAT = Utils.toMapUnit(90.0);
 	private static final int MIN_LON = Utils.toMapUnit(-180.0);
 	private static final int MAX_LON = Utils.toMapUnit(180.0);
-	private final static Pattern keySplitter = Pattern.compile(Pattern.quote("_"));
+	private static final Pattern keySplitter = Pattern.compile(Pattern.quote("_"));
 
 	private final Area bounds;
 	private final File precompSeaDir;
@@ -92,7 +93,7 @@ public class PrecompSeaReader {
 						blockinput.close();
 					} else {
 						// No, try XML.
-						try (Reader reader = new InputStreamReader(is, Charset.forName("UTF-8"));) {
+						try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
 							OSMXMLParser parser = new OSMXMLParser(processor, true);
 							parser.setReader(reader);
 							parser.parse();
@@ -116,7 +117,7 @@ public class PrecompSeaReader {
 			try {
 				if (precompSeaDir.isDirectory()) {
 					File indexFile = new File(precompSeaDir, indexFileName);
-					if (indexFile.exists() == false) {
+					if (!indexFile.exists()) {
 						// check if the unzipped index file exists
 						indexFileName = "index.txt";
 						indexFile = new File(precompSeaDir, indexFileName);
@@ -125,8 +126,9 @@ public class PrecompSeaReader {
 						try (InputStream indexStream = new FileInputStream(indexFile)) {
 							loadIndex(indexStream, indexFileName);
 						}
-					} else
+					} else {
 						throw new IllegalArgumentException("Cannot find required index.txt[.gz] in " + precompSeaDir);
+					}
 				} else if (precompSeaDir.getName().endsWith(".zip")) {
 					zipFile = new ZipFile(precompSeaDir);
 					internalPath = "sea/";
@@ -145,8 +147,9 @@ public class PrecompSeaReader {
 							precompZipFileInternalPath = internalPath;
 							loadIndex(indexStream, indexFileName);
 						}
-					} else
+					} else {
 						throw new SplitFailedException("Don't know how to read " + precompSeaDir);
+					}
 				} else {
 					throw new SplitFailedException("Don't know how to read " + precompSeaDir);
 				}
@@ -216,7 +219,7 @@ public class PrecompSeaReader {
 						StringBuilder sb = new StringBuilder(prefix);
 						sb.append(precompKey);
 						sb.append(ext);
-						if (items[1].equals(sb.toString()) == false) {
+						if (!items[1].equals(sb.toString())) {
 							throw new IllegalArgumentException("Unexpected file name in index file: " + indexLine);
 						}
 					}
@@ -324,8 +327,8 @@ public class PrecompSeaReader {
 		String[] tileCoords = keySplitter.split(precompKey);
 		byte type = '?';
 		if (tileCoords.length == 2) {
-			int lat = Integer.valueOf(tileCoords[0]);
-			int lon = Integer.valueOf(tileCoords[1]);
+			int lat = Integer.parseInt(tileCoords[0]);
+			int lon = Integer.parseInt(tileCoords[1]);
 			int latIndex = (MAX_LAT - lat) / PRECOMP_RASTER;
 			int lonIndex = (MAX_LON - lon) / PRECOMP_RASTER;
 

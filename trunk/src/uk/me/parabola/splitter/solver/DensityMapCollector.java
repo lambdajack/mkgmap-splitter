@@ -104,7 +104,7 @@ class DensityMapCollector extends AbstractMapProcessor{
 	}
 
 	public void saveMap(String fileName) {
-		if (details != null && details.getBounds() != null)
+		if (details.getBounds() != null)
 			densityMap.saveMap(fileName, details.getBounds(), bounds);
 	}
 	public void readMap(String fileName) {

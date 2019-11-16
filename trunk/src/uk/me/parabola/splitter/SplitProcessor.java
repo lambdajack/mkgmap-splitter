@@ -51,7 +51,7 @@ class SplitProcessor extends AbstractMapProcessor {
 	private final InputQueueInfo[] writerInputQueues;
 	protected final BlockingQueue<InputQueueInfo> toProcess;
 	private final ArrayList<Thread> workerThreads;
-	protected final InputQueueInfo STOP_MSG = new InputQueueInfo(null);
+	protected final InputQueueInfo stopMsg = new InputQueueInfo(null);
 
 	private AreaSet usedWriters;
 	
@@ -125,29 +125,26 @@ class SplitProcessor extends AbstractMapProcessor {
 	@Override
 	public void processWay(Way w) {
 		usedWriters.clear();
-		int multiTileWriterIdx = (wayWriterMap != null) ? wayWriterMap.getSeq(w.getId()): UNASSIGNED;
-		if (multiTileWriterIdx != UNASSIGNED){
+		int multiTileWriterIdx = (wayWriterMap != null) ? wayWriterMap.getSeq(w.getId()) : UNASSIGNED;
+		if (multiTileWriterIdx != UNASSIGNED) {
 			setUsedWriters(multiTileWriterIdx);
-		}
-		else{
+		} else {
 			int oldclIndex = UNASSIGNED;
 			for (long id : w.getRefs()) {
-				// Get the list of areas that the way is in. 
+				// Get the list of areas that the way is in.
 				int clIdx = coords.get(id);
-				if (clIdx != UNASSIGNED){
-					if (oldclIndex != clIdx){ 
-						usedWriters.or(writerDictionary.getSet(clIdx));
-						if (wayWriterMap != null){
-							// we can stop here because all other nodes
-							// will be in the same tile
-							break;
-						}
-						oldclIndex = clIdx;
+				if (clIdx != UNASSIGNED && oldclIndex != clIdx) {
+					usedWriters.or(writerDictionary.getSet(clIdx));
+					if (wayWriterMap != null) {
+						// we can stop here because all other nodes
+						// will be in the same tile
+						break;
 					}
+					oldclIndex = clIdx;
 				}
 			}
 		}
-		if (!usedWriters.isEmpty()){
+		if (!usedWriters.isEmpty()) {
 			// store these areas in ways map
 			ways.put(w.getId(), writerDictionary.translate(usedWriters));
 			++countWays;
@@ -182,9 +179,8 @@ class SplitProcessor extends AbstractMapProcessor {
 				int oldclIndex = UNASSIGNED;
 				int oldwlIndex = UNASSIGNED;
 				for (Member mem : rel.getMembers()) {
-					// String role = mem.getRole();
 					long id = mem.getRef();
-					if (mem.getType().equals("node")) {
+					if ("node".equals(mem.getType())) {
 						int clIdx = coords.get(id);
 
 						if (clIdx != UNASSIGNED){
@@ -193,7 +189,7 @@ class SplitProcessor extends AbstractMapProcessor {
 							}
 							oldclIndex = clIdx;
 						}
-					} else if (mem.getType().equals("way")) {
+					} else if ("way".equals(mem.getType())) {
 						int wlIdx = ways.get(id);
 
 						if (wlIdx != UNASSIGNED){
@@ -226,14 +222,12 @@ class SplitProcessor extends AbstractMapProcessor {
 			try {
 				writerInputQueues[i].stop();
 			} catch (InterruptedException e) {
-				throw new SplitFailedException(
-						"Failed to add the stop element for worker thread " + i,
-						e);
+				throw new SplitFailedException("Failed to add the stop element for worker thread " + i, e);
 			}
 		}
 		try {
 			if (maxThreads > 1)
-				toProcess.put(STOP_MSG);// Magic flag used to indicate that all data is done.
+				toProcess.put(stopMsg);// Magic flag used to indicate that all data is done.
 
 		} catch (InterruptedException e1) {
 			e1.printStackTrace();
@@ -243,8 +237,7 @@ class SplitProcessor extends AbstractMapProcessor {
 			try {
 				workerThread.join();
 			} catch (InterruptedException e) {
-				throw new SplitFailedException("Failed to join for thread "
-						+ workerThread.getName(), e);
+				throw new SplitFailedException("Failed to join for thread " + workerThread.getName(), e);
 			}
 		}
 		for (int i=writerOffset; i<= lastWriter; i++) {
@@ -294,11 +287,9 @@ class SplitProcessor extends AbstractMapProcessor {
 			// this node is part of a multi-tile-polygon, add it to all tiles covered by the parent 
 			AreaSet nodeWriters = writerDictionary.getSet(multiTileWriterIdx);
 			for (int i : nodeWriters) {
-				if (i < writerOffset || i > lastWriter)
+				if (i < writerOffset || i > lastWriter || usedWriters.get(i))
 					continue;
 
-				if (usedWriters.get(i) )
-					continue;
 				if (maxThreads > 1) {
 					addToWorkingQueue(i, currentNode);
 				} else {
@@ -381,7 +372,6 @@ class SplitProcessor extends AbstractMapProcessor {
 		}
 
 		void flush() throws InterruptedException {
-			// System.out.println("Flush");
 			inputQueue.put(staging);
 			staging = new ArrayList<>(STAGING_SIZE);
 			toProcess.put(this);
@@ -392,13 +382,10 @@ class SplitProcessor extends AbstractMapProcessor {
 		}
 	}
 
-	public static final int NO_ELEMENTS = 3;
-	final int STAGING_SIZE = 300;
+	static final int NO_ELEMENTS = 3;
+	static final int STAGING_SIZE = 300;
 
 	private class OSMWriterWorker implements Runnable {
-
-		public OSMWriterWorker() {
-		}
 
 		@Override
 		public void run() {
@@ -411,9 +398,9 @@ class SplitProcessor extends AbstractMapProcessor {
 					e1.printStackTrace();
 					continue;
 				}
-				if (workPackage == STOP_MSG) {
+				if (workPackage == stopMsg) {
 					try {
-						toProcess.put(STOP_MSG); // Re-inject it so that other
+						toProcess.put(stopMsg); // Re-inject it so that other
 						// threads know that we're
 						// exiting.
 					} catch (InterruptedException e) {

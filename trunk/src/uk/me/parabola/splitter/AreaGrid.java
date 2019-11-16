@@ -38,23 +38,26 @@ public class AreaGrid implements AreaIndex{
 		grid = new Grid(null, null);
 	}
 
+	@Override
 	public Area getBounds(){
 		return grid.getBounds();
 	}
 
+	@Override
 	public AreaGridResult get (final Node n){
 		return grid.get(n.getMapLat(),n.getMapLon());
 	}
 
+	@Override
 	public AreaGridResult get (int lat, int lon){
 		return grid.get(lat, lon);
 	}
 
 	private class Grid {
-		private final static int TOP_GRID_DIM_LON = 512; 
-		private final static int TOP_GRID_DIM_LAT = 512;
-		private final static int SUB_GRID_DIM_LON = 32; 
-		private final static int SUB_GRID_DIM_LAT = 32;
+		private static final int TOP_GRID_DIM_LON = 512; 
+		private static final int TOP_GRID_DIM_LAT = 512;
+		private static final int SUB_GRID_DIM_LON = 32; 
+		private static final int SUB_GRID_DIM_LAT = 32;
 		private static final int MIN_GRID_LAT = 2048;
 		private static final int MIN_GRID_LON = 2048;
 		private static final int MAX_TESTS = 10; 
@@ -101,13 +104,13 @@ public class AreaGrid implements AreaIndex{
 		 */
 		private int fillGrid(AreaSet usedAreas) {
 			int gridStepLon, gridStepLat;
-			if (bounds == null){
+			if (bounds == null) {
 				// calculate grid area
 				Area tmpBounds = null;
 				for (int i = 0; i < areaDictionary.getNumOfAreas(); i++) {
 					Area extBounds = areaDictionary.getExtendedArea(i);
 					if (usedAreas == null || usedAreas.get(i))
-						tmpBounds = (tmpBounds ==null) ? extBounds : tmpBounds.add(extBounds);
+						tmpBounds = (tmpBounds == null) ? extBounds : tmpBounds.add(extBounds);
 				}
 				if (tmpBounds == null)
 					return 0;
@@ -168,21 +171,19 @@ public class AreaGrid implements AreaIndex{
 						areaSet.lock();
 						if (testGrid[lon].get(lat)){
 							int numTests = areaSet.cardinality();
-							if (numTests  >  MAX_TESTS){ 
-								if (gridStepLat > MIN_GRID_LAT && gridStepLon > MIN_GRID_LON){
-									Area gridPart = new Area(gridMinLat + gridStepLat * lat, gridMinLon + gridStepLon * lon,
-											gridMinLat + gridStepLat * (lat+1),
-											gridMinLon + gridStepLon * (lon+1));
-									// late allocation 
-									if (subGrid == null)
-										subGrid = new Grid [gridDimLon + 1][gridDimLat + 1];
-									usedSubGridElems++;
+							if (numTests  >  MAX_TESTS && gridStepLat > MIN_GRID_LAT && gridStepLon > MIN_GRID_LON){
+								Area gridPart = new Area(gridMinLat + gridStepLat * lat, gridMinLon + gridStepLon * lon,
+										gridMinLat + gridStepLat * (lat+1),
+										gridMinLon + gridStepLon * (lon+1));
+								// late allocation 
+								if (subGrid == null)
+									subGrid = new Grid [gridDimLon + 1][gridDimLat + 1];
+								usedSubGridElems++;
 
-									subGrid[lon][lat] = new Grid(areaSet, gridPart);
-									numTests = subGrid[lon][lat].getMaxCompares() + 1;
-									maxAreaSearch = Math.max(maxAreaSearch, numTests);
-									continue;
-								}
+								subGrid[lon][lat] = new Grid(areaSet, gridPart);
+								numTests = subGrid[lon][lat].getMaxCompares() + 1;
+								maxAreaSearch = Math.max(maxAreaSearch, numTests);
+								continue;
 							}
 							maxAreaSearch = Math.max(maxAreaSearch, numTests);
 						}

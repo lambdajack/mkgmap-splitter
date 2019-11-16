@@ -16,15 +16,9 @@
  */
 package func;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import java.io.File;
-
 import org.junit.After;
 import org.junit.Before;
 
-import func.lib.Args;
 import func.lib.TestUtils;
 
 /**

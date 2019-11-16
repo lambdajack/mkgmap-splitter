@@ -13,8 +13,6 @@
 
 package uk.me.parabola.splitter;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.BlockingQueue;
 
 import uk.me.parabola.splitter.OSMMessage.Type;
@@ -31,9 +29,19 @@ public class QueueProcessor extends AbstractMapProcessor {
 	private final BlockingQueue<OSMMessage> queue;
 	private final MapProcessor realProcessor;
 
+	/** number of OSM elements to collect before adding them to the queue */
+	private static final int NUM_STAGING = 1000;
+	private Element[] staging;
+	private int stagingPos;
 	public QueueProcessor(BlockingQueue<OSMMessage> queue, MapProcessor realProcessor) {
 		this.queue = queue;
 		this.realProcessor = realProcessor;
+		initStaging();
+	}
+
+	private void initStaging() {
+		staging = new Element[NUM_STAGING];
+		stagingPos = 0;
 	}
 
 	@Override
@@ -97,18 +105,15 @@ public class QueueProcessor extends AbstractMapProcessor {
 		return true;
 	}
 
+	@Override
 	public int getPhase() {
 		throw new UnsupportedOperationException("call getPhase() of real processor"); 
 	}
 
-	/** number of OSM elements to collect before adding them to the queue */
-	private static final int NUM_STAGING = 1000;
-	private List<Element> staging = new ArrayList<>(NUM_STAGING);
-
 	private void addToQueue(Element el) {
 		try {
-			staging.add(el);
-			if (staging.size() >= NUM_STAGING)
+			staging[stagingPos++] = el;
+			if (stagingPos >= NUM_STAGING)
 				flush();
 		} catch (InterruptedException e) {
 			throw new RuntimeException(e);
@@ -125,9 +130,9 @@ public class QueueProcessor extends AbstractMapProcessor {
 	}
 
 	private void flush() throws InterruptedException {
-		if (staging == null || staging.isEmpty())
+		if (staging == null || stagingPos == 0)
 			return;
 		queue.put(new OSMMessage(staging));
-		staging = new ArrayList<>(NUM_STAGING);
+		initStaging();
 	}
 }

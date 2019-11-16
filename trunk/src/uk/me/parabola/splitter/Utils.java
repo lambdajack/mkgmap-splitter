@@ -24,7 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,10 +69,10 @@ public class Utils {
 	 * @return An integer value in map units.
 	 */
 	public static int toMapUnit(double l) {
-		double DELTA = 360.0D / (1 << 24) / 2; //Correct rounding
+		double delta = 360.0D / (1 << 24) / 2; // Correct rounding
 		if (l > 0)
-			return (int) ((l + DELTA) * (1 << 24)/360);
-		return (int) ((l - DELTA) * (1 << 24)/360);
+			return (int) ((l + delta) * (1 << 24) / 360);
+		return (int) ((l - delta) * (1 << 24) / 360);
 	}
 	
 	/**
@@ -116,7 +116,7 @@ public class Utils {
 		if (backgroundReader) {
 			is = new BackgroundInputStream(is);
 		}
-		return new InputStreamReader(is, Charset.forName("UTF-8"));
+		return new InputStreamReader(is, StandardCharsets.UTF_8);
 	}
 	
 	public static Rectangle area2Rectangle (Area area, int overlap){
@@ -164,7 +164,7 @@ public class Utils {
 			case PathIterator.SEG_MOVETO: 
 			case PathIterator.SEG_CLOSE:
 				if ((type == PathIterator.SEG_MOVETO && points != null) || type == PathIterator.SEG_CLOSE) {
-					if (points.size() > 2 && points.get(0).equals(points.get(points.size() - 1)) == false) {
+					if (points.size() > 2 && !points.get(0).equals(points.get(points.size() - 1))) {
 						points.add(points.get(0));
 					}
 					if (points.size() > 3){
@@ -208,7 +208,7 @@ public class Utils {
 	}
 	
 	/**
-	 * Convert area with coordinates in degrees to area in MapUnits
+	 * Convert area with coordinates in degrees to area in MapUnits. 
 	 * @param area
 	 * @return
 	 */

@@ -100,7 +100,7 @@ public final class SparseLong2IntMap {
 	private static final int LARGE_VECTOR_SIZE = (int) (CHUNK_ID_MASK / CHUNK_SIZE + 1);
 	private static final int MAX_Y_VAL = LARGE_VECTOR_SIZE / CHUNK_STORE_ELEMS + 1;
 	/** The part of the key that contains the offset in the chunk. */
-	private static final long CHUNK_OFFSET_MASK = CHUNK_SIZE - 1;		
+	private static final long CHUNK_OFFSET_MASK = CHUNK_SIZE - 1L;		
 	/** First 58 bits of a long. If this part of the key changes, a different chunk is needed. */
 	private static final long OLD_CHUNK_ID_MASK = ~CHUNK_OFFSET_MASK;	
 
@@ -187,7 +187,7 @@ public final class SparseLong2IntMap {
 			freePosInStore = new int[MAX_STORED_BYTES_FOR_CHUNK];
 			reusableChunks = new Int2ObjectOpenHashMap<>(0, Hash.VERY_FAST_LOAD_FACTOR);
 			largeVector = new int[LARGE_VECTOR_SIZE];
-			estimatedBytes = LARGE_VECTOR_SIZE * Integer.BYTES 
+			estimatedBytes = (long) LARGE_VECTOR_SIZE * Integer.BYTES 
 					+ (MAX_STORED_BYTES_FOR_CHUNK) * (8 + 1 * Integer.BYTES) + 3 * (24 + 16) + 190; 
 		}
 
@@ -479,7 +479,7 @@ public final class SparseLong2IntMap {
 		if (useRLE) {
 			flag1 |= FLAG1_COMP_METHOD_RLE;
 			flag1 |= ((bitsForRLE << 2) & FLAG1_RUNLEN_MASK) ;
-			boolean writeIndex = useDict & (dict.size() > 2);
+			boolean writeIndex = useDict && (dict.size() > 2);
 			int pos = 1; // first val is written with different method
 			
 			bitWriter.putn(tmpChunk[pos++] - 1, bitsForRLE);
@@ -539,7 +539,6 @@ public final class SparseLong2IntMap {
 				putVal(bufEncoded, currentChunk[i], 4);
 			}
 		}
-		return;
 	}
 	
 	/**
@@ -554,10 +553,11 @@ public final class SparseLong2IntMap {
 	private void storeVal(int val, int nb, int sign) {
 		if (sign == 0)
 			bitWriter.sputn(val, nb);
-		else if (sign == 1){
-			bitWriter.putn(val, nb-1);
-		} else
-			bitWriter.putn(-val, nb-1);
+		else if (sign == 1) {
+			bitWriter.putn(val, nb - 1);
+		} else {
+			bitWriter.putn(-val, nb - 1);
+		}
 	}
 
 	private static int readVal(BitReader br, int bits, int sign) {
@@ -743,8 +743,7 @@ public final class SparseLong2IntMap {
 			flag = inBuf.get();
 			if ((flag & FLAG1_COMP_METHOD_BITS) != 0) {
 				inBuf.position(inBuf.position() - 1);
-				int val = decodeBits(chunkMask, targetChunk, chunkOffset, inBuf);
-				return val;
+				return decodeBits(chunkMask, targetChunk, chunkOffset, inBuf);
 			}
 			bytesToUse = (flag & FLAG1_USED_BYTES_MASK) + 1;	
 		}
@@ -814,9 +813,8 @@ public final class SparseLong2IntMap {
 		if (index == 0)
 			return val;
 		int dictSize = dictSizeIs2 ? 2: 1;
-		if (useDict) {
-			if (!dictSizeIs2)
-				dictSize = br.get(FLAG_BITS_FOR_DICT_SIZE) + 1;
+		if (useDict && !dictSizeIs2) {
+			dictSize = br.get(FLAG_BITS_FOR_DICT_SIZE) + 1;
 		}
 		int[] dict = new int[dictSize];
 		if (useDict) {
@@ -851,8 +849,9 @@ public final class SparseLong2IntMap {
 			if (useRLE) {
 				runLength = br.get(bitsForRLE) + 1;
 				nVals += runLength;
-			} else
+			} else {
 				nVals++;
+			}
 			if (index < nVals)
 				return val;
 			if (targetChunk != null) {
@@ -863,8 +862,11 @@ public final class SparseLong2IntMap {
 			if (nVals >= n)
 				break;
 			if (useDict) {
-				dictPos = readIndex ? br.get(bitsForPos) : (dictPos == 0) ? 1 : 0;
-				;
+				if (readIndex) {
+					dictPos = br.get(bitsForPos);
+				} else {
+					dictPos = dictPos == 0 ? 1 : 0;
+				}
 				val = dict[dictPos];
 			} else {
 				val = readVal(br, bits, sign) + bias;
@@ -914,7 +916,6 @@ public final class SparseLong2IntMap {
 		currentMem = null;
 		bias1 = null;
 		size = 0;
-		// test();
 	}
 
 	public long size() {
@@ -938,21 +939,22 @@ public final class SparseLong2IntMap {
 			System.out.println(dataDesc + " Map is empty");
 			return;
 		}
-		long totalBytes = currentChunk.length * Integer.BYTES;
+		long totalBytes = (long) currentChunk.length * Integer.BYTES;
 		long totalChunks = 1; // current chunk
 			
 		for (ChunkMem mem : topMap.values()) {
 			totalChunks += mem.getChunkCount();
 			totalBytes += mem.estimatedBytes;
 		}
-		float bytesPerKey = (float) (totalBytes * 100 / size()) / 100;
+		
+		long bytesPerKey = Math.round((double) totalBytes / size());
 		System.out.println(dataDesc + " Map: " + Utils.format(size()) + " stored long/int pairs require ca. " +
 				bytesPerKey + " bytes per pair. " +
 				Utils.format(totalChunks) + " chunks are used, the avg. number of values in one " + CHUNK_SIZE + "-chunk is " +
 				(totalChunks == 0 ? 0 : (size() / totalChunks)) + ".");
 		if (msgLevel >= 0) {
 			String details = dataDesc + " Map details: ~" + bytesToMB(totalBytes) + ", including " + topMap.size()
-					+ " array(s) with " + bytesToMB(LARGE_VECTOR_SIZE * Integer.BYTES);
+					+ " array(s) with " + bytesToMB((long) LARGE_VECTOR_SIZE * Integer.BYTES);
 			System.out.println(details);
 		}
 		System.out.println();

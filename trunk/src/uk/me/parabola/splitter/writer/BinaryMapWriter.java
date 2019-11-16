@@ -330,11 +330,11 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 						long id = j.getRef();
 						bi.addMemids(id - lastid);
 						lastid = id;
-						if (j.getType().equals("node")) {
+						if ("node".equals(j.getType())) {
 							bi.addTypes(MemberType.NODE);
-						} else if (j.getType().equals("way")) {
+						} else if ("way".equals(j.getType())) {
 							bi.addTypes(MemberType.WAY);
-						} else if (j.getType().equals("relation")) {
+						} else if ("relation".equals(j.getType())) {
 							bi.addTypes(MemberType.RELATION);
 						} else {
 							assert (false); // Software bug: Unknown entity.

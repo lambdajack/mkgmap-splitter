@@ -194,25 +194,24 @@ public class AreaList {
 		
 		try (PrintWriter pw = new PrintWriter(filename)) {
 			pw.println("area");
-			for (int i = 0; i < shapes.size(); i++){
+			for (int i = 0; i < shapes.size(); i++) {
 				List<Point> shape = shapes.get(i);
 				if (Utils.clockwise(shape))
-					pw.println(i+1);
-				else 
-					pw.println("!" + (i+1));
+					pw.println(i + 1);
+				else
+					pw.println("!" + (i + 1));
 				Point point = null;
-				for (int j = 0; j < shape.size(); j++){
+				for (int j = 0; j < shape.size(); j++) {
 					point = shape.get(j);
-					if (j > 0 && j+1 < shape.size()){
+					if (j > 0 && j + 1 < shape.size()) {
 						Point lastPoint = shape.get(j - 1);
-						Point nextPoint = shape.get(j + 1); 
-						if (point.x == nextPoint.x && point.x == lastPoint.x)
-							continue;
-						if (point.y == nextPoint.y && point.y == lastPoint.y)
+						Point nextPoint = shape.get(j + 1);
+						if ((point.x == nextPoint.x && point.x == lastPoint.x)
+								|| (point.y == nextPoint.y && point.y == lastPoint.y))
 							continue;
 					}
-					pw.format(Locale.ROOT, "  %f  %f%n",Utils.toDegrees(point.x) ,Utils.toDegrees(point.y));
-					
+					pw.format(Locale.ROOT, "  %f  %f%n", Utils.toDegrees(point.x), Utils.toDegrees(point.y));
+
 				}
 				pw.println("END");
 			}
@@ -322,17 +321,16 @@ public class AreaList {
 	 * @param polygons
 	 * @param kmlOutputFile
 	 * @param outputType
-	 * @throws IOException
 	 */
-	public void writeListFiles(File fileOutputDir, List<PolygonDesc> polygons,
-			String kmlOutputFile, String outputType) throws IOException {
-		for (PolygonDesc pd : polygons){
+	public void writeListFiles(File fileOutputDir, List<PolygonDesc> polygons, String kmlOutputFile,
+			String outputType) {
+		for (PolygonDesc pd : polygons) {
 			List<uk.me.parabola.splitter.Area> areasPart = new ArrayList<>();
-			for (uk.me.parabola.splitter.Area a : areas){
+			for (uk.me.parabola.splitter.Area a : areas) {
 				if (pd.getArea().intersects(a.getRect()))
 					areasPart.add(a);
 			}
-			if (kmlOutputFile != null){
+			if (kmlOutputFile != null) {
 				File out = new File(kmlOutputFile);
 				String kmlOutputFilePart = pd.getName() + "-" + out.getName();
 				if (out.getParent() != null)
@@ -346,9 +344,9 @@ public class AreaList {
 			AreaList al = new AreaList(areasPart, null);
 			al.setGeoNamesFile(geoNamesFile);
 			al.writePoly(new File(fileOutputDir, pd.getName() + "-" + "areas.poly").getPath());
-			al.writeArgsFile(new File(fileOutputDir, pd.getName() + "-" + "template.args").getPath(), outputType, pd.getMapId());
+			al.writeArgsFile(new File(fileOutputDir, pd.getName() + "-" + "template.args").getPath(), outputType,
+					pd.getMapId());
 		}
-	}
-	
+	}	
 
 }

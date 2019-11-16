@@ -18,39 +18,57 @@ import java.util.concurrent.BlockingQueue;
 public abstract class AbstractMapProcessor implements MapProcessor {
 	public static final int UNASSIGNED = Short.MIN_VALUE;
 
+	@Override
 	public boolean skipTags(){
 		return false;
 	}
+	@Override
 	public boolean skipNodes(){
 		return false;
 	}
+	@Override
 	public boolean skipWays(){
 		return false;
 	}
+	@Override
 	public boolean skipRels(){
 		return false;
 	}
 
-	public void boundTag(Area bounds){}
+	@Override
+	public void boundTag(Area bounds) {
+	}
 
-	public void processNode(Node n){}
+	@Override
+	public void processNode(Node n) {
+	}
 
-	public void processWay(Way w){}
-	
-	public void processRelation(Relation r) {}
+	@Override
+	public void processWay(Way w) {
+	}
 
-	public boolean endMap(){
+	@Override
+	public void processRelation(Relation r) {
+	}
+
+	@Override
+	public boolean endMap() {
 		return true;
 	}
+
+	@Override
 	public int getPhase() {
 		return 1;
 	}
-	
-	public void startFile() {};
+
+	@Override
+	public void startFile() {
+	}
 		
 	/**
 	 * Simple method that allows all processors to use the producer/consumer pattern
 	 */
+	@Override
 	public final boolean consume(BlockingQueue<OSMMessage> queue) {
 		while (true) {
 			try {
@@ -58,6 +76,8 @@ public abstract class AbstractMapProcessor implements MapProcessor {
 				switch (msg.type) {
 				case ELEMENTS:
 					for (Element el : msg.elements) {
+						if (el == null)
+							break;
 						if (el instanceof Node)
 							processNode((Node) el);
 						else if (el instanceof Way)

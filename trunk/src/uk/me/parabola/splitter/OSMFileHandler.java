@@ -55,9 +55,6 @@ public class OSMFileHandler {
 
 	private int maxThreads = 1;
 	
-	/** if this is true we may not want to use producer/consumer pattern */ 
-	private MapProcessor realProcessor;
-
 	public void setFileNames(List<String> filenames) {
 		this.filenames = filenames;
 	}
@@ -132,18 +129,19 @@ public class OSMFileHandler {
 	
 	
 	RuntimeException exception = null;
+
 	public boolean execute(MapProcessor processor) {
-		realProcessor = processor;
 		if (maxThreads == 1)
 			return process(processor);
-		
-		// use two threads  
+
+		// use two threads
 		BlockingQueue<OSMMessage> queue = new ArrayBlockingQueue<>(10);
-		QueueProcessor queueProcessor = new QueueProcessor(queue, realProcessor);
-		
+		QueueProcessor queueProcessor = new QueueProcessor(queue, processor);
+
 		// start producer thread
-		new Thread("producer for " + realProcessor.getClass().getSimpleName()){
-			public void run(){
+		new Thread("producer for " + processor.getClass().getSimpleName()) {
+			@Override
+			public void run() {
 				try {
 					process(queueProcessor);
 				} catch (SplitFailedException e) {
@@ -156,7 +154,7 @@ public class OSMFileHandler {
 				}
 			}
 		}.start();
-		boolean done = realProcessor.consume(queue);
+		boolean done = processor.consume(queue);
 		if (exception != null)
 			throw exception;
 		return done;

@@ -13,34 +13,35 @@
 
 package uk.me.parabola.splitter;
 
-import java.util.List;
-
 /**
  * For OSM data which is passed between parsers and processors 
  * @author Gerd Petermann
  *
  */
 public class OSMMessage {
-	public enum Type {START_FILE, ELEMENTS, BOUNDS, END_MAP, EXIT}; 
+	public enum Type {START_FILE, ELEMENTS, BOUNDS, END_MAP, EXIT}
 
 	// either el or bounds must be null
-	List<Element> elements;
-	Area bounds;
-	Type type;
+	final Element[] elements;
+	final Area bounds;
+	final Type type;
 
-	public OSMMessage(List<Element> elements) {
+	public OSMMessage(Element[] elements) {
 		this.elements = elements;
 		type = Type.ELEMENTS;
+		bounds = null;
 	}
 
 	public OSMMessage(Area bounds) {
 		this.bounds = bounds;
 		type = Type.BOUNDS;
+		elements = null;
 	}
 
 	public OSMMessage(Type t) {
-		assert !t.equals(Type.BOUNDS); 
-		assert !t.equals(Type.ELEMENTS); 
+		assert t != Type.BOUNDS && t != Type.ELEMENTS; 
+		elements = null;
+		bounds = null;
 		type = t;
 	}
 }

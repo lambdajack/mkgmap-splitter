@@ -281,17 +281,15 @@ public class DensityMap {
 				details.addToBounds(Integer.parseInt(items[2]),Integer.parseInt(items[3]));
 			}
 			inLine = problemReader.readLine();
-			if (inLine != null){
-				if ("no_bounds_in_input".equals(inLine) == false){
-					items = csvSplitter.split(inLine);
-					if (items.length != 4){
-						System.out.println("Error: Invalid format in map file, line number " + problemReader.getLineNumber() + ": "   
-								+ inLine);
-						return null;
-					}
-					collectorBounds = new Area(Integer.parseInt(items[0]), Integer.parseInt(items[1]),
-							Integer.parseInt(items[2]),Integer.parseInt(items[3]));
+			if (inLine != null && !"no_bounds_in_input".equals(inLine)) {
+				items = csvSplitter.split(inLine);
+				if (items.length != 4) {
+					System.out.println("Error: Invalid format in map file, line number " + problemReader.getLineNumber()
+							+ ": " + inLine);
+					return null;
 				}
+				collectorBounds = new Area(Integer.parseInt(items[0]), Integer.parseInt(items[1]),
+						Integer.parseInt(items[2]), Integer.parseInt(items[3]));
 			}
 			while ((inLine = problemReader.readLine()) != null) {
 				items = csvSplitter.split(inLine);
@@ -336,8 +334,7 @@ public class DensityMap {
 		assert y >= 0;
 		assert width2 > 0;
 		assert height2 > 0;
-		Area area = new Area(yToLat(y),xToLon(x),yToLat(y+height2),xToLon(x+width2));
-		return area;
+		return new Area(yToLat(y),xToLon(x),yToLat(y+height2),xToLon(x+width2));
 	}
 
 	/**

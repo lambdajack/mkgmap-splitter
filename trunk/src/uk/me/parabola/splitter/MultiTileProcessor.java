@@ -122,12 +122,10 @@ class MultiTileProcessor extends AbstractMapProcessor {
 	
 	@Override
 	public void processNode(Node node) {
-		if (phase == PHASE3_NODES_AND_WAYS){
-			if (neededNodes.get(node.getId())){
-				storeCoord(node);
-				// return memory to GC
-				neededNodes.clear(node.getId());
-			}
+		if (phase == PHASE3_NODES_AND_WAYS && neededNodes.get(node.getId())) {
+			storeCoord(node);
+			// return memory to GC
+			neededNodes.clear(node.getId());
 		}
 	}
 
@@ -360,15 +358,13 @@ class MultiTileProcessor extends AbstractMapProcessor {
 					continue;
 				for (int i = 0; i < rel.numMembers; i++){
 					long memId = rel.memRefs[i];
-					if (rel.memTypes[i] == MEM_REL_TYPE){
-						if (problemRels.get(memId)){
-							problemRels.set(rel.getId());
-							rel.setAddedAsParent();
-							System.out.println("Adding parent of problem rel "+ memId + " to problem list: " + rel.getId());
-							changed = true;
-							break;
-						}
-					} 
+					if (rel.memTypes[i] == MEM_REL_TYPE && problemRels.get(memId)) {
+						problemRels.set(rel.getId());
+						rel.setAddedAsParent();
+						System.out.println("Adding parent of problem rel " + memId + " to problem list: " + rel.getId());
+						changed = true;
+						break;
+					}
 				}
 			}
 			if (!changed)
@@ -704,9 +700,8 @@ class MultiTileProcessor extends AbstractMapProcessor {
 
 			if (numWriters == 0) 
 				needsCrossTileCheck = true; 
-			else if (numWriters > 1){
-				if (dataStorer.getAreaDictionary().mayCross(writerSet))
-					needsCrossTileCheck = true;
+			else if (numWriters > 1 && dataStorer.getAreaDictionary().mayCross(writerSet)) {
+				needsCrossTileCheck = true;
 			}
 		}
 		if (needsCrossTileCheck){
@@ -875,11 +870,9 @@ class MultiTileProcessor extends AbstractMapProcessor {
 						else 
 							mpBbox.add(wayBbox);
 						
-						if (mpBbox.x < 0 && mpBbox.getMaxX() > 0 && mpBbox.width >= PROBLEM_WIDTH){
-							if (complainedAboutSize == false){
-								System.out.println("rel crosses -180/180: " + rel.getId());
-								complainedAboutSize = true;
-							}
+						if (!complainedAboutSize  && mpBbox.x < 0 && mpBbox.getMaxX() > 0 && mpBbox.width >= PROBLEM_WIDTH){
+							System.out.println("rel crosses -180/180: " + rel.getId());
+							complainedAboutSize = true;
 						}
 
 					}

@@ -31,8 +31,8 @@ import java.util.regex.Pattern;
  * 
  */
 class ProblemListProcessor extends AbstractMapProcessor {
-	private final static int PHASE1_NODES_AND_WAYS = 1;
-	private final static int PHASE2_RELS_ONLY = 2;
+	private static final int PHASE1_NODES_AND_WAYS = 1;
+	private static final int PHASE2_RELS_ONLY = 2;
 
 	private final SparseLong2IntMap coords;
 	private final SparseLong2IntMap ways;
@@ -104,28 +104,21 @@ class ProblemListProcessor extends AbstractMapProcessor {
 
 	@Override
 	public boolean skipTags() {
-		if (phase == PHASE1_NODES_AND_WAYS)
-			return true;
-		return false;
+		return phase == PHASE1_NODES_AND_WAYS;
 	}
 
 	@Override
 	public boolean skipNodes() {
-		if (phase == PHASE2_RELS_ONLY)
-			return true;
-		return false;
+		return phase == PHASE2_RELS_ONLY;
 	}
 	@Override
 	public boolean skipWays() {
-		if (phase == PHASE2_RELS_ONLY)
-			return true;
-		return false;
+		return phase == PHASE2_RELS_ONLY;
 	}
+	
 	@Override
 	public boolean skipRels() {
-		if (phase == PHASE2_RELS_ONLY)
-			return false;
-		return true;
+		return phase != PHASE2_RELS_ONLY;
 	}
 		
 	@Override
@@ -139,7 +132,6 @@ class ProblemListProcessor extends AbstractMapProcessor {
 			return;
 		int countAreas = 0;
 		int lastUsedArea = UNASSIGNED;
-		int areaIdx = UNASSIGNED;
 		AreaGridResult areaCandidates = areaIndex.get(node);
 		if (areaCandidates == null) 
 			return;
@@ -147,24 +139,24 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		areaSet.clear();
 		
 		for (int n : areaCandidates.set) {
-			if (n < areaOffset || n > lastAreaOffset)
-				continue;
-
-			if (areaCandidates.testNeeded ? areaDictionary.getArea(n).contains(node) : true) {
+			if (n >= areaOffset && n <= lastAreaOffset
+					&& (!areaCandidates.testNeeded || areaDictionary.getArea(n).contains(node))) {
 				areaSet.set(n);
 				++countAreas;
 				lastUsedArea = n;
 			}
 		}
-		if (countAreas > 0){
+		if (countAreas > 0) {
+			int areaIdx;
 			if (countAreas > 1)
 				areaIdx = areaDictionary.translate(areaSet);
 			else  
 				areaIdx = AreaDictionary.translate(lastUsedArea); // no need to do lookup in the dictionary 
 			coords.put(node.getId(), areaIdx);
 			++countCoords;
-			if (countCoords % 10_000_000 == 0){
-				System.out.println("coord MAP occupancy: " + Utils.format(countCoords) + ", number of area dictionary entries: " + areaDictionary.size());
+			if (countCoords % 10_000_000 == 0) {
+				System.out.println("coord MAP occupancy: " + Utils.format(countCoords)
+						+ ", number of area dictionary entries: " + areaDictionary.size());
 			}
 		}
 	}
@@ -185,16 +177,14 @@ class ProblemListProcessor extends AbstractMapProcessor {
 				maybeChanged = true;
 			}
 		}
-		if (!isFirstPass && maybeChanged || (isLastPass & !isFirstPass)){
+		if (!isFirstPass && maybeChanged || (isLastPass && !isFirstPass)){
 			int wayAreaIdx = ways.get(way.getId());
 			if (wayAreaIdx != UNASSIGNED)
 				areaSet.or(areaDictionary.getSet(wayAreaIdx));
 		}
 		
-		if (isLastPass){
-			if (checkIfMultipleAreas(areaSet)){
-				problemWays.add(way.getId());
-			}
+		if (isLastPass && checkIfMultipleAreas(areaSet)){
+			problemWays.add(way.getId());
 		}
 		if (maybeChanged && !areaSet.isEmpty()){
 			ways.put(way.getId(), areaDictionary.translate(areaSet));
@@ -202,7 +192,7 @@ class ProblemListProcessor extends AbstractMapProcessor {
 	}
 	
 	// default exclude list for boundary tag
-	private final static HashSet<String> unwantedBoundaryTagValues = new HashSet<>(
+	private static final HashSet<String> unwantedBoundaryTagValues = new HashSet<>(
 			Arrays.asList("administrative", "postal_code", "political"));
 
 	@Override
@@ -212,9 +202,9 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		boolean useThis = false;
 		boolean isMPRelType = false;
 		boolean hasBoundaryTag = false;
-		boolean isWantedBoundary = (wantedBoundaryTagValues == null) ? true:false;
+		boolean isWantedBoundary = wantedBoundaryTagValues == null;
 		boolean isRouteRelType = false;
-		boolean isWantedRoute = (wantedRouteTagValues == null) ? false : true;
+		boolean isWantedRoute = wantedRouteTagValues != null;
 		Iterator<Element.Tag> tags = rel.tagsIterator();
 		String admin_level = null;
 		while(tags.hasNext()) {
@@ -248,27 +238,27 @@ class ProblemListProcessor extends AbstractMapProcessor {
 		}
 		if (isMPRelType && (isWantedBoundary || !hasBoundaryTag))
 			useThis = true;
-		else if (isMPRelType && hasBoundaryTag  && admin_level != null){
+		else if (isMPRelType && hasBoundaryTag && admin_level != null) {
 			if (wantedBoundaryAdminLevels.contains(admin_level))
 				useThis = true;
-		} else if (isRouteRelType && isWantedRoute)
+		} else if (isRouteRelType && isWantedRoute) {
 			useThis = true;
-		if (!useThis){
+		}
+		if (!useThis) {
 			return;
 		}
 		areaSet.clear();
 		Integer relAreaIdx;
-		if (!isFirstPass){
+		if (!isFirstPass) {
 			relAreaIdx = dataStorer.getUsedRels().get(rel.getId());
 			if (relAreaIdx != null)
 				areaSet.or(areaDictionary.getSet(relAreaIdx));
 		}
 		int oldclIndex = UNASSIGNED;
 		int oldwlIndex = UNASSIGNED;
-		//System.out.println("r" + rel.getId() + " " + rel.getMembers().size());
 		for (Member mem : rel.getMembers()) {
 			long id = mem.getRef();
-			if (mem.getType().equals("node")) {
+			if ("node".equals(mem.getType())) {
 				int clIdx = coords.get(id);
 
 				if (clIdx != UNASSIGNED){
@@ -279,7 +269,7 @@ class ProblemListProcessor extends AbstractMapProcessor {
 
 				}
 
-			} else if (mem.getType().equals("way")) {
+			} else if ("way".equals(mem.getType())) {
 				int wlIdx = ways.get(id);
 
 				if (wlIdx != UNASSIGNED){
