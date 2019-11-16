@@ -240,11 +240,8 @@ class ProblemListProcessor extends AbstractMapProcessor {
 			} else if ("admin_level".equals(t.key)){
 				admin_level = t.value;
 			}
-			if ("route".equals((t.value))) {
-				if (wantedRouteTagValues != null) {
-					if (wantedRouteTagValues.contains(t.value))
-						isWantedRoute = true;
-				}
+			if (wantedRouteTagValues != null && "route".equals((t.key)) && wantedRouteTagValues.contains(t.value)) {
+				isWantedRoute = true;
 			} 			
 			if (useThis)
 				break;
