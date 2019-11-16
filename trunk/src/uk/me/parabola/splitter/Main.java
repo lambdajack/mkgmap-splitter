@@ -431,7 +431,7 @@ public class Main {
 		// plausibility checks and default handling
 		if (keepComplete) {
 			if (fileNameList.size() > 1) {
-				System.err.println("Warning: --keep-complete is only used for the first input file.");
+				System.err.println("Warning: --keep-complete is only used for the first input file. Further files must use higher ids.");
 			}
 			if (overlapAmount > 0) {
 				System.err.println("Warning: --overlap is used in combination with --keep-complete=true ");
@@ -461,12 +461,9 @@ public class Main {
 	}
 
 	private static void checkOptionalFileOption(String fname, String option) {
-		if (fname != null) {
-			if (testAndReportFname(fname, option) == false) {
-				throw new IllegalArgumentException();
-			}
+		if (fname != null && !testAndReportFname(fname, option)) {
+			throw new IllegalArgumentException();
 		}
-		
 	}
 
 	private OSMWriter[] createWriters(List<Area> areas) {
