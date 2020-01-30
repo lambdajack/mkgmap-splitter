@@ -91,7 +91,7 @@
 		<mkdir dir="${ivy.jar.dir}" />
 		<mkdir dir="${ivy.lib.dir}/compile" />
 		<mkdir dir="${ivy.lib.dir}/test" />
-		<get src="http://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar"
+		<get src="https://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar"
 				 dest="${ivy.jar.file}" usetimestamp="true"/>
 	</target>
 
