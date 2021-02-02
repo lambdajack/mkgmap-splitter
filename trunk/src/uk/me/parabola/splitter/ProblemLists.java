@@ -53,7 +53,7 @@ public class ProblemLists {
 		long startProblemListGenerator = System.currentTimeMillis();
 		ArrayList<Area> distinctAreas = getNonOverlappingAreas(realAreas);
 		if (distinctAreas.size() > realAreas.size()) {
-			System.err.println("Waring: The areas given in --split-file are overlapping.");
+			System.err.println("Warning: The areas given in --split-file are overlapping.");
 			Set<Integer> overlappingTiles = new TreeSet<>();
 			for (int i = 0; i < realAreas.size(); i++) {
 				Area a1 = realAreas.get(i);
