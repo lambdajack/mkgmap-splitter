@@ -341,10 +341,10 @@
 			<fileset dir="${test.input.cache}" includes="osm/*.osm.pbf" />
 		</copy>
 		<mkdir dir="test/resources/in/osm"/>
-		<get src="http://www.mkgmap.org.uk/testinput/osm/alaska-2016-12-27.osm.pbf"
+		<get src="https://www.mkgmap.org.uk/testinput/osm/alaska-2016-12-27.osm.pbf"
 			dest="test/resources/in/osm/alaska-2016-12-27.osm.pbf" usetimestamp="true"
 			ignoreerrors="true"/>
-		<get src="http://www.mkgmap.org.uk/testinput/osm/hamburg-2016-12-26.osm.pbf"
+		<get src="https://www.mkgmap.org.uk/testinput/osm/hamburg-2016-12-26.osm.pbf"
 			dest="test/resources/in/osm/hamburg-2016-12-26.osm.pbf" usetimestamp="true"
 			ignoreerrors="true"/>
 	</target>

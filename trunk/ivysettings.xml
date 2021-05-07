@@ -1,5 +1,5 @@
 <ivysettings>
-	<property name="mkgmap.ivy.repo" value="http://ivy.mkgmap.org.uk/repo" />
+	<property name="mkgmap.ivy.repo" value="https://ivy.mkgmap.org.uk/repo" />
 	<settings defaultResolver="custom" />
 
 	<include url="${ivy.default.settings.dir}/ivysettings-public.xml"/>
