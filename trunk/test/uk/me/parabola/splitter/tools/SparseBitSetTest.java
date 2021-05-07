@@ -14,7 +14,7 @@
 package uk.me.parabola.splitter.tools;
 
 import static org.junit.Assert.assertEquals;
-import uk.me.parabola.splitter.tools.SparseBitSet;
+
 import org.junit.Test;
 
 /**
