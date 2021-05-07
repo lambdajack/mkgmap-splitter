@@ -57,13 +57,13 @@ public class BinaryMapParser extends BinaryParser {
 		this.skipRels = processor.skipRels();
 		this.msgLevel = msgLevel;
 
-		if (skipNodes == false) {
+		if (!skipNodes) {
 			wantedTypeMask |= TYPE_DENSE;
 			wantedTypeMask |= TYPE_NODES;
 		}
-		if (skipWays == false)
+		if (!skipWays)
 			wantedTypeMask |= TYPE_WAYS;
-		if (skipRels == false)
+		if (!skipRels)
 			wantedTypeMask |= TYPE_RELS;
 	}
 
@@ -81,11 +81,9 @@ public class BinaryMapParser extends BinaryParser {
 			if (blockType != 0 && (blockType & wantedTypeMask) == 0)
 				return true;
 		} else if (blockType != -1) {
-			// System.out.println("previous block contained " + blockType );
 			blockTypes.add(blockType);
 		}
 		blockType = 0;
-		// System.out.println("Seeing block of type: "+block.getType());
 		if (block.getType().equals("OSMData"))
 			return false;
 		if (block.getType().equals("OSMHeader"))
@@ -101,40 +99,36 @@ public class BinaryMapParser extends BinaryParser {
 		// So do nothing else.
 	}
 
-	// Per-block state for parsing, set when processing the header of a block;
 	@Override
 	protected void parseDense(Osmformat.DenseNodes nodes) {
 		blockType |= TYPE_DENSE;
 		if (skipNodes)
 			return;
-		long last_id = 0, last_lat = 0, last_lon = 0;
+		long lastId = 0, lastLat = 0, lastLon = 0;
 		int j = 0;
 		int maxi = nodes.getIdCount();
-		Node tmp = new Node();
 		for (int i = 0; i < maxi; i++) {
-			long lat = nodes.getLat(i) + last_lat;
-			last_lat = lat;
-			long lon = nodes.getLon(i) + last_lon;
-			last_lon = lon;
-			long id = nodes.getId(i) + last_id;
-			last_id = id;
+			long lat = nodes.getLat(i) + lastLat;
+			lastLat = lat;
+			long lon = nodes.getLon(i) + lastLon;
+			lastLon = lon;
+			long id = nodes.getId(i) + lastId;
+			lastId = id;
 			double latf = parseLat(lat), lonf = parseLon(lon);
 
-			tmp = new Node();
+			Node tmp = new Node();
 			tmp.set(id, latf, lonf);
 			if (nodes.hasDenseinfo())
 				tmp.setVersion(nodes.getDenseinfo().getVersion(i));
 
-			if (!skipTags) {
-				if (nodes.getKeysValsCount() > 0) {
-					while (nodes.getKeysVals(j) != 0) {
-						int keyid = nodes.getKeysVals(j++);
-						int valid = nodes.getKeysVals(j++);
-						tmp.addTag(getStringById(keyid), getStringById(valid));
-					}
-					j++; // Skip over the '0' delimiter.
-
+			if (!skipTags && nodes.getKeysValsCount() > 0) {
+				while (nodes.getKeysVals(j) != 0) {
+					int keyid = nodes.getKeysVals(j++);
+					int valid = nodes.getKeysVals(j++);
+					tmp.addTag(getStringById(keyid), getStringById(valid));
 				}
+				j++; // Skip over the '0' delimiter.
+
 			}
 			processor.processNode(tmp);
 			elemCounter.countNode(tmp.getId());
@@ -143,7 +137,7 @@ public class BinaryMapParser extends BinaryParser {
 
 	@Override
 	protected void parseNodes(List<Osmformat.Node> nodes) {
-		if (nodes.size() == 0)
+		if (nodes.isEmpty())
 			return;
 		blockType |= TYPE_NODES;
 		if (skipNodes)
@@ -174,14 +168,14 @@ public class BinaryMapParser extends BinaryParser {
 			return;
 		for (Osmformat.Way i : ways) {
 			Way tmp = new Way();
-			if (skipTags == false) {
+			if (!skipTags) {
 				for (int j = 0; j < i.getKeysCount(); j++)
 					tmp.addTag(getStringById(i.getKeys(j)), getStringById(i.getVals(j)));
 			}
-			long last_id = 0;
+			long lastId = 0;
 			for (long j : i.getRefsList()) {
-				tmp.addRef(j + last_id);
-				last_id = j + last_id;
+				tmp.addRef(j + lastId);
+				lastId = j + lastId;
 			}
 
 			long id = i.getId();
@@ -196,14 +190,14 @@ public class BinaryMapParser extends BinaryParser {
 
 	@Override
 	protected void parseRelations(List<Osmformat.Relation> rels) {
-		if (rels.size() == 0)
+		if (rels.isEmpty())
 			return;
 		blockType |= TYPE_RELS;
 		if (skipRels)
 			return;
 		for (Osmformat.Relation i : rels) {
 			Relation tmp = new Relation();
-			if (skipTags == false) {
+			if (!skipTags) {
 				for (int j = 0; j < i.getKeysCount(); j++)
 					tmp.addTag(getStringById(i.getKeys(j)), getStringById(i.getVals(j)));
 			}
@@ -211,10 +205,10 @@ public class BinaryMapParser extends BinaryParser {
 			tmp.setId(id);
 			tmp.setVersion(i.getInfo().getVersion());
 
-			long last_mid = 0;
+			long lastMemId = 0;
 			for (int j = 0; j < i.getMemidsCount(); j++) {
-				long mid = last_mid + i.getMemids(j);
-				last_mid = mid;
+				long mid = lastMemId + i.getMemids(j);
+				lastMemId = mid;
 				String role = getStringById(i.getRolesSid(j));
 				String etype = null;
 
