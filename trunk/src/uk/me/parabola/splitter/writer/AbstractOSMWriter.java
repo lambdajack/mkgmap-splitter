@@ -36,7 +36,7 @@ public abstract class AbstractOSMWriter implements OSMWriter{
 	protected int versionMethod; 
 	
 
-	public AbstractOSMWriter(Area bounds, File outputDir, int mapId, int extra) {
+	protected AbstractOSMWriter(Area bounds, File outputDir, int mapId, int extra) {
 		this.mapId = mapId;
 		this.bounds = bounds;
 		this.outputDir = outputDir;
@@ -61,21 +61,26 @@ public abstract class AbstractOSMWriter implements OSMWriter{
 
 	}
 	
+	@Override
 	public Area getBounds() {
 		return bounds;
 	}
 	
+	@Override
 	public Area getExtendedBounds() {
 		return extendedBounds;
 	}
+	@Override
 	public int getMapId(){
 		return mapId;
 	}
 	
+	@Override
 	public Rectangle getBBox(){
 		return bbox;
 	}
 	
+	@Override
 	public void write (Element element) throws IOException {
 		if (element instanceof Node) {
 			write((Node) element);

@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -35,7 +36,7 @@ import uk.me.parabola.splitter.Way;
 
 /**
  * Implements the needed methods to write the result in the o5m format. 
- * The routines to are based on the osmconvert.c source from Markus Weber who allows 
+ * The routines are based on the osmconvert.c source from Markus Weber who allows 
  * to copy them for any o5m IO, thanks a lot for that. 
  *
  * @author GerdP
@@ -69,7 +70,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 	private long lastNodeId;
 	private long lastWayId;
 	private long lastRelId;
-	private long lastRef[];
+	private long[] lastRef;
 	private int lastLon,lastLat;
 	
 	private int lastWrittenDatasetType = 0;
@@ -77,22 +78,22 @@ public class O5mMapWriter extends AbstractOSMWriter{
 	// index of last entered element in string table
 	private short stw__tabi= 0; 
 	
-	  // has table; elements point to matching strings in stw__tab[];
-	  // -1: no matching element;
+	  // has table; elements point to matching strings in stw__tab[]
+	  // -1: no matching element
 	private short[] stw__hashtab;
 	  // for to chaining of string table rows which match
-	  // the same hash value; matching rows are chained in a loop;
-	  // if there is only one row matching, it will point to itself;
+	  // the same hash value; matching rows are chained in a loop
+	  // if there is only one row matching, it will point to itself
 	private short[] stw__tabprev;
 	private short[] stw__tabnext;
-	  // has value of this element as a link back to the hash table;
-	  // a -1 element indicates that the string table entry is not used; 	
+	  // has value of this element as a link back to the hash table
+	  // a -1 element indicates that the string table entry is not used 	
 	private short[] stw__tabhash;
 	
 	private byte[] numberConversionBuf;
 
-	private final static Map<String, byte[]> wellKnownTagKeys = new HashMap<>(60, 0.25f);
-	private final static Map<String, byte[]> wellKnownTagVals = new HashMap<>(20, 0.25f);
+	private static final Map<String, byte[]> wellKnownTagKeys = new HashMap<>(60, 0.25f);
+	private static final Map<String, byte[]> wellKnownTagVals = new HashMap<>(20, 0.25f);
 	
 	static {
 		try {
@@ -114,7 +115,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 						"ele", "tiger:separated", "tiger:zip_right", 
 						"yh:WIDTH", "place", "foot"
 					)) {
-				wellKnownTagKeys.put(s, s.getBytes("UTF-8"));
+				wellKnownTagKeys.put(s, s.getBytes(StandardCharsets.UTF_8));
 			}
 
 			for (String s : Arrays.asList(
@@ -122,7 +123,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 					"footway", "Bing", "PGS", "private", "stream", "service",
 					"house", "unclassified", "track", "traffic_signals","restaurant","entrance"
 					)) {
-				wellKnownTagVals.put(s, s.getBytes("UTF-8"));
+				wellKnownTagVals.put(s, s.getBytes(StandardCharsets.UTF_8));
 			}
 		} catch (Exception e) {
 			// should not happen
@@ -150,17 +151,18 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		stw_reset();
 	}
 	
+	@Override
 	public void initForWrite() {
-		  // has table; elements point to matching strings in stw__tab[];
-		  // -1: no matching element;
+		  // has table; elements point to matching strings in stw__tab[]
+		  // -1: no matching element
 		stw__hashtab = new short[STW_HASH_TAB_MAX];
 		  // for to chaining of string table rows which match
-		  // the same hash value; matching rows are chained in a loop;
-		  // if there is only one row matching, it will point to itself;
+		  // the same hash value; matching rows are chained in a loop
+		  // if there is only one row matching, it will point to itself
 		stw__tabprev = new short[STW__TAB_MAX];
 		stw__tabnext = new short[STW__TAB_MAX];
-		  // has value of this element as a link back to the hash table;
-		  // a -1 element indicates that the string table entry is not used; 	
+		  // has value of this element as a link back to the hash table
+		  // a -1 element indicates that the string table entry is not used 	
 		stw__tabhash = new short[STW__TAB_MAX];
 		lastRef = new long[3];
 		numberConversionBuf = new byte[60];
@@ -202,6 +204,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		lastWrittenDatasetType = fileType;
 	}
 
+	@Override
 	public void finishWrite() {
 		try {
 			os.write(EOD_FLAG);
@@ -238,6 +241,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		writeDataset(NODE_DATASET,stream);
 	}
 
+	@Override
 	public void write(Way way) throws IOException {
 		if (lastWrittenDatasetType != WAY_DATASET){
 			reset();
@@ -260,6 +264,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		writeDataset(WAY_DATASET,stream);
 	}
 
+	@Override
 	public void write(Relation rel) throws IOException {
 		if (lastWrittenDatasetType != REL_DATASET){
 			reset();
@@ -325,12 +330,12 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		int ref;
 		s1Bytes = wellKnownTagKeys.get(s1);
 		if (s1Bytes == null){
-			s1Bytes = s1.getBytes("UTF-8");
+			s1Bytes = s1.getBytes(StandardCharsets.UTF_8);
 		}
 		if (s2 != null){
 			s2Bytes = wellKnownTagVals.get(s2);
 			if (s2Bytes == null){ 
-				s2Bytes= s2.getBytes("UTF-8");
+				s2Bytes= s2.getBytes(StandardCharsets.UTF_8);
 			}
 		}
 		else 
@@ -397,7 +402,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 			i = stw__hashtab[hash];
 			if(i < 0)  // no reference in hash table until now
 				stw__tabprev[stw__tabi] = stw__tabnext[stw__tabi] = stw__tabi;
-			// self-link the new element;
+			// self-link the new element
 			else {  // there is already a reference in hash table
 				// in-chain the new element
 				stw__tabnext[stw__tabi] = (short) i;
@@ -457,9 +462,8 @@ public class O5mMapWriter extends AbstractOSMWriter{
 	 * @param s1 
 	 * @return  hash value in the range 0..(STW__TAB_MAX-1) 
 	 * or -1 if the strings are longer than STW_TAB_STR_MAX bytes in total
-	 * @throws IOException 
 	 */
-	private int stw_hash(String s1, String s2) throws IOException{
+	private int stw_hash(String s1, String s2) {
 		int len = s1Bytes.length;
 		if (s2Bytes != null)
 			len += s2Bytes.length;
@@ -493,7 +497,7 @@ public class O5mMapWriter extends AbstractOSMWriter{
 	private int writeSignedNum(long num, OutputStream stream)throws IOException {
 		int cntBytes = 0;
 		  // write a long as signed varying integer.
-		  // return: bytes written;
+		  // return: bytes written
 		long u;
 		int part;
 

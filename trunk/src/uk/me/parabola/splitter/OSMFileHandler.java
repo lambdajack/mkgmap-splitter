@@ -81,7 +81,7 @@ public class OSMFileHandler {
 						O5mMapParser o5mParser = new O5mMapParser(processor, fileChannel, skipArray);
 						o5mParser.parse();
 						if (skipArray == null) {
-							skipArray = o5mParser.getSkipArray();
+							skipArray = o5mParser.getNextSkipArray();
 							skipArrayMap.put(filename, skipArray);
 						}
 					}

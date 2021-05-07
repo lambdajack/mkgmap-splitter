@@ -175,6 +175,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 
 		private class NodeGroup extends Prim<Node> implements PrimGroupWriterInterface {
 
+			@Override
 			public Osmformat.PrimitiveGroup serialize() {
 				if (useDense)
 					return serializeDense();
@@ -185,7 +186,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 			 * Serialize all nodes in the 'dense' format.
 			 */
 			public Osmformat.PrimitiveGroup serializeDense() {
-				if (contents.size() == 0) {
+				if (contents.isEmpty()) {
 					return null;
 				}
 				// System.out.format("%d Dense ",nodes.size());
@@ -238,7 +239,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 			 *            Add to this PrimitiveBlock.
 			 */
 			public Osmformat.PrimitiveGroup serializeNonDense() {
-				if (contents.size() == 0) {
+				if (contents.isEmpty()) {
 					return null;
 				}
 				// System.out.format("%d Nodes ",nodes.size());
@@ -269,8 +270,9 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		}
 
 		private class WayGroup extends Prim<Way> implements PrimGroupWriterInterface {
+			@Override
 			public Osmformat.PrimitiveGroup serialize() {
-				if (contents.size() == 0) {
+				if (contents.isEmpty()) {
 					return null;
 				}
 
@@ -302,6 +304,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		}
 
 		private class RelationGroup extends Prim<Relation> implements PrimGroupWriterInterface {
+			@Override
 			public void addStringsToStringtable() {
 				StringTable stable = serializer.getStringTable();
 				super.addStringsToStringtable();
@@ -312,8 +315,9 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 				}
 			}
 
+			@Override
 			public Osmformat.PrimitiveGroup serialize() {
-				if (contents.size() == 0) {
+				if (contents.isEmpty()) {
 					return null;
 				}
 
@@ -432,7 +436,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 				groups.add(relations);
 				relations = null;
 			} else {
-				return; // No data. Is this an empty file?
+				// No data. Is this an empty file?
 			}
 		}
 
@@ -450,6 +454,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		super(bounds, outputDir, mapId, extra);
 	}
 
+	@Override
 	public void initForWrite() {
 		String filename = String.format(Locale.ROOT, "%08d.osm.pbf", mapId);
 		try {
@@ -496,6 +501,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		headerWritten = true;
 	}
 
+	@Override
 	public void finishWrite() {
 		try {
 			serializer.switchTypes();
@@ -507,14 +513,17 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		}
 	}
 
+	@Override
 	public void write(Node node) {
 		serializer.processor.process(node);
 	}
 
+	@Override
 	public void write(Way way) {
 		serializer.processor.process(way);
 	}
 
+	@Override
 	public void write(Relation relation) {
 		serializer.processor.process(relation);
 	}

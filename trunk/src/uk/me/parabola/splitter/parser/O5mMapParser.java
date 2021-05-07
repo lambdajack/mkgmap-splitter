@@ -16,6 +16,7 @@ package uk.me.parabola.splitter.parser;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 import uk.me.parabola.splitter.Area;
@@ -93,7 +94,8 @@ public class O5mMapParser {
 	private long[] lastRef;
 	private long lastTs;
 	private long lastChangeSet;
-	private int lastLon, lastLat;
+	private int lastLon;
+	private int lastLat;
 	
 	/**
 	 * A parser for the o5m format.
@@ -101,9 +103,8 @@ public class O5mMapParser {
 	 * @param fc the file channel for the input file 
 	 * @param skipArray An Array of longs that is used to hold information of file position of the first occurrence of 
 	 * each known 05m data type (esp. nodes, ways, and relations). 
-	 * @throws IOException 
 	 */
-	public O5mMapParser(MapProcessor processor, FileChannel fc, long[] skipArray) throws IOException{
+	public O5mMapParser(MapProcessor processor, FileChannel fc, long[] skipArray) {
 		this.fileChannel = fc;
 		this.processor = processor;
 		this.skipArray = skipArray;
@@ -130,13 +131,11 @@ public class O5mMapParser {
 		int start = get() & 0xff;
 		if (start != RESET_FLAG) 
 			throw new IOException("wrong header byte " + start);
-		if (skipArray != null) {
-			if (skipNodes) {
-				if (skipWays)
-					filePos = skipArray[REL_DATASET]; // jump to first relation
-				else
-					filePos = skipArray[WAY_DATASET]; // jump to first way
-			}
+		if (skipArray != null && skipNodes) {
+			if (skipWays)
+				filePos = skipArray[REL_DATASET]; // jump to first relation
+			else 
+				filePos = skipArray[WAY_DATASET]; // jump to first way
 		}
 		if (filePos >= 0)
 			readFile();
@@ -152,20 +151,17 @@ public class O5mMapParser {
 			long size = 0;
 			int fileType = get() & 0xff;
 			if (fileType >= 0 && fileType < 0xf0) {
-				if (skipArray == null) {
+				if (skipArray == null && firstPosInFile[fileType] == -1) {
 					// save first occurrence of a data set type
-					if (firstPosInFile[fileType] == -1) {
-						firstPosInFile[fileType] = Math.max(0, filePos- 1);
-					}
+					firstPosInFile[fileType] = Math.max(0, filePos- 1);
 				}
 				size = readUnsignedNum64();
 				nextFilePos = filePos + size;
 				
 				
-				boolean doSkip = false;
-				if (fileType == NODE_DATASET && skipNodes) doSkip = true;
-				else if (fileType == WAY_DATASET && skipWays) doSkip = true;
-				else if (fileType == REL_DATASET && skipRels) doSkip = true;
+				boolean doSkip = ((fileType == NODE_DATASET && skipNodes) 
+						|| (fileType == WAY_DATASET && skipWays)
+						|| (fileType == REL_DATASET && skipRels));
 				switch(fileType) {
 				case NODE_DATASET: 
 				case WAY_DATASET: 
@@ -456,7 +452,7 @@ public class O5mMapParser {
 		while (true) {
 			final int b = get();
 			if (b == 0)
-				return new String(cnvBuffer, 0, length, "UTF-8");
+				return new String(cnvBuffer, 0, length, StandardCharsets.UTF_8);
 			cnvBuffer[length++] = (byte) b;
 		}
 		
@@ -590,8 +586,8 @@ public class O5mMapParser {
 		return result;
 	}
 
-	public long[] getSkipArray() {
-		return firstPosInFile;
+	public long[] getNextSkipArray() {
+		return firstPosInFile; 
 	}
 	
 	/**

@@ -13,6 +13,20 @@
 
 package uk.me.parabola.splitter.writer;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.zip.GZIPOutputStream;
+
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Element;
@@ -20,18 +34,6 @@ import uk.me.parabola.splitter.Node;
 import uk.me.parabola.splitter.Relation;
 import uk.me.parabola.splitter.Utils;
 import uk.me.parabola.splitter.Way;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.zip.GZIPOutputStream;
 
 public class OSMXMLWriter extends AbstractOSMWriter{
 	private final DecimalFormat numberFormat = new DecimalFormat(
@@ -45,13 +47,14 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 		super(bounds, outputDir, mapId, extra);
 	}
 
+	@Override
 	public void initForWrite() {
 
 		String filename = String.format(Locale.ROOT, "%08d.osm.gz", mapId);
 		try {
 			FileOutputStream fos = new FileOutputStream(new File(outputDir, filename));
 			OutputStream zos = new GZIPOutputStream(fos);
-			writer = new OutputStreamWriter(zos, "utf-8");
+			writer = new OutputStreamWriter(zos, StandardCharsets.UTF_8);
 			writeHeader();
 		} catch (IOException e) {
 			System.out.println("Could not open or write file header. Reason: " + e.getMessage());
@@ -76,6 +79,7 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 		writeString("'/>\n");
 	}
 
+	@Override
 	public void finishWrite() {
 		try {
 			writeString("</osm>\n");
@@ -87,6 +91,7 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 		}
 	}
 
+	@Override
 	public void write(Node node) throws IOException {
 		writeString("<node id='");
 		writeLong(node.getId());
@@ -106,6 +111,7 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 
 	}
 
+	@Override
 	public void write(Way way) throws IOException {
 		writeString("<way id='");
 		writeLong(way.getId());
@@ -123,6 +129,7 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 		writeString("</way>\n");
 	}
 
+	@Override
 	public void write(Relation rel) throws IOException {
 		writeString("<relation id='");
 		writeLong(rel.getId());
