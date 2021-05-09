@@ -23,8 +23,8 @@ import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Element;
 import uk.me.parabola.splitter.MapProcessor;
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.Relation;
-import uk.me.parabola.splitter.Utils;
 import uk.me.parabola.splitter.Way;
 
 /**
@@ -212,15 +212,12 @@ public class O5mMapParser {
 		assert filePos == nextFilePos;
 		System.out.println("Bounding box " + leftf + " " + bottomf + " " + rightf + " " + topf);
 
-		Area area = new Area(
-				Utils.toMapUnit(bottomf),
-				Utils.toMapUnit(leftf),
-				Utils.toMapUnit(topf),
-				Utils.toMapUnit(rightf));
+		OsmBounds osmBounds = new OsmBounds(bottomf, leftf, topf, rightf);
+		Area area = osmBounds.toArea();
 		if (!area.verify())
 			throw new IllegalArgumentException("invalid bbox area in o5m file: " + area);
 
-		processor.boundTag(area);
+		processor.boundTag(osmBounds);
 	}
 
 	/**

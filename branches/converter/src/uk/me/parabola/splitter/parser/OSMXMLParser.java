@@ -18,6 +18,7 @@ import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Convert;
 import uk.me.parabola.splitter.MapProcessor;
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.Relation;
 import uk.me.parabola.splitter.Utils;
 import uk.me.parabola.splitter.Way;
@@ -204,7 +205,6 @@ public class OSMXMLParser extends AbstractXppParser {
 			}
 		}
 		double[] coords = new double[4];
-		int[] mapUnits = new int[4];
 		for (int i = 0; i < 4; i++) {
 			try {
 				coords[i] = Double.parseDouble(split[i].trim());
@@ -212,9 +212,9 @@ public class OSMXMLParser extends AbstractXppParser {
 				System.err.println("A <bounds/> tag was found but it contains unexpected data. Unable to parse '" + split[i] + "' as a double. Ignoring bounds");
 				return;
 			}
-			mapUnits[i] = Utils.toMapUnit(coords[i]);
 		}
-		Area bounds = new Area(mapUnits[0], mapUnits[1], mapUnits[2], mapUnits[3]);
+		OsmBounds osmBounds = new OsmBounds(coords[0], coords[1], coords[2], coords[3]);
+		Area bounds = osmBounds.toArea();
 		if (!bounds.verify())
 			throw new IllegalArgumentException("invalid bbox area in osm file: " + bounds);
 
@@ -225,7 +225,7 @@ public class OSMXMLParser extends AbstractXppParser {
 			return;
 		}
 
-		processor.boundTag(bounds);
+		processor.boundTag(osmBounds);
 		System.out.println("A <bounds/> tag was found. Area covered is " + bounds.toString());
 	}
 

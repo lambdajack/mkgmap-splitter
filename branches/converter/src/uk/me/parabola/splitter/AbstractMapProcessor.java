@@ -36,7 +36,7 @@ public abstract class AbstractMapProcessor implements MapProcessor {
 	}
 
 	@Override
-	public void boundTag(Area bounds) {
+	public void boundTag(OsmBounds bounds) {
 	}
 
 	@Override

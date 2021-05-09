@@ -17,6 +17,7 @@ import uk.me.parabola.splitter.AbstractMapProcessor;
 import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.MapDetails;
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.RoundingUtils;
 import uk.me.parabola.splitter.args.SplitterParams;
 
@@ -57,14 +58,15 @@ class DensityMapCollector extends AbstractMapProcessor{
 	}
 	
 	@Override
-	public void boundTag(Area fileBbox) {
+	public void boundTag(OsmBounds fileBbox) {
 		if (ignoreBoundsTags)
 			return;
+		Area area = fileBbox.toArea();
 		if (this.bounds == null){
-			this.bounds = fileBbox;
+			this.bounds = area;
+		} else {
+			this.bounds = this.bounds.add(area);
 		}
-		else
-			this.bounds = this.bounds.add(fileBbox);
 	}
 
 	@Override

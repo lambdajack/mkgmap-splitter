@@ -13,45 +13,48 @@
 
 package uk.me.parabola.splitter.writer;
 
-import java.awt.Rectangle;
+import java.io.File;
 import java.io.IOException;
 
-import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Element;
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.Relation;
 import uk.me.parabola.splitter.Way;
 
 public interface OSMWriter {
-	/** 
-	 * @return the bounds of the area (excluding the overlap)
-	 */
-	public Area getBounds();
-	
-	/**
-	 * @return the bounds of the area (including the overlap)
-	 */
-	public Area getExtendedBounds();
-	
-	public Rectangle getBBox();
-	
-	public int getMapId();
-	
+
 	/**
 	 * open output file, allocate buffers etc.
 	 */
-	public abstract void initForWrite();
+	void initForWrite();
 
 	/**
 	 * close output file, free resources
 	 */
-	public abstract void finishWrite();
+	void finishWrite();
 
-	public abstract void write(Node node) throws IOException;
+	void write(Node node) throws IOException;
 
-	public abstract void write(Way way) throws IOException;
+	void write(Way way) throws IOException;
 
-	public abstract void write(Relation rel) throws IOException;
-	
-	public abstract void write(Element el) throws IOException;
+	void write(Relation rel) throws IOException;
+
+	default void write (Element element) throws IOException {
+		if (element instanceof Node) {
+			write((Node) element);
+		} else if (element instanceof Way) {
+			write((Way) element);
+		} else if (element instanceof Relation) {
+			write((Relation) element);
+		}
+	}
+
+	void write(OsmBounds bounds) throws IOException;
+
+	File getOutputFile();
+
+	void setVersionMethod(int versionMethod);
+
+	int getWriteVersion(Element el);
 }

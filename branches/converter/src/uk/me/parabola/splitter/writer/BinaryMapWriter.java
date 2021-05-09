@@ -19,23 +19,21 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 
-import uk.me.parabola.splitter.Area;
-import uk.me.parabola.splitter.Element;
-import uk.me.parabola.splitter.Node;
-import uk.me.parabola.splitter.Relation;
-import uk.me.parabola.splitter.Utils;
-import uk.me.parabola.splitter.Version;
-import uk.me.parabola.splitter.Way;
-import uk.me.parabola.splitter.Relation.Member;
 import crosby.binary.BinarySerializer;
 import crosby.binary.Osmformat;
-import crosby.binary.StringTable;
 import crosby.binary.Osmformat.DenseInfo;
 import crosby.binary.Osmformat.Relation.MemberType;
+import crosby.binary.StringTable;
 import crosby.binary.file.BlockOutputStream;
 import crosby.binary.file.FileBlock;
+import uk.me.parabola.splitter.Element;
+import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
+import uk.me.parabola.splitter.Relation;
+import uk.me.parabola.splitter.Relation.Member;
+import uk.me.parabola.splitter.Version;
+import uk.me.parabola.splitter.Way;
 
 public class BinaryMapWriter extends AbstractOSMWriter {
 
@@ -66,16 +64,14 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 			/**
 			 * Add to the queue.
 			 * 
-			 * @param item
-			 *            The entity to add
+			 * @param item The entity to add
 			 */
 			public void add(T item) {
 				contents.add(item);
 			}
 
 			/**
-			 * Add all of the tags of all entities in the queue to the string
-			 * table.
+			 * Add all of the tags of all entities in the queue to the string table.
 			 */
 			public void addStringsToStringtable() {
 				StringTable stable = getStringTable();
@@ -235,8 +231,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 			/**
 			 * Serialize all nodes in the non-dense format.
 			 * 
-			 * @param parentbuilder
-			 *            Add to this PrimitiveBlock.
+			 * @param parentbuilder Add to this PrimitiveBlock.
 			 */
 			public Osmformat.PrimitiveGroup serializeNonDense() {
 				if (contents.isEmpty()) {
@@ -371,14 +366,13 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		protected Processor processor = new Processor();
 
 		/**
-		 * Buffer up events into groups that are all of the same type, or all of
-		 * the same length, then process each buffer.
+		 * Buffer up events into groups that are all of the same type, or all of the
+		 * same length, then process each buffer.
 		 */
 		public class Processor {
 
 			/**
-			 * Check if we've reached the batch size limit and process the batch
-			 * if we have.
+			 * Check if we've reached the batch size limit and process the batch if we have.
 			 */
 			public void checkLimit() {
 				total_entities++;
@@ -422,8 +416,8 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		}
 
 		/**
-		 * At the end of this function, all of the lists of unprocessed 'things'
-		 * must be null
+		 * At the end of this function, all of the lists of unprocessed 'things' must be
+		 * null
 		 */
 		protected void switchTypes() {
 			if (nodes != null) {
@@ -450,31 +444,34 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 		}
 	}
 
-	public BinaryMapWriter(Area bounds, File outputDir, int mapId, int extra) {
-		super(bounds, outputDir, mapId, extra);
+	public BinaryMapWriter(File oFile) {
+		super(oFile);
+	}
+
+	public BinaryMapWriter(String baseName) {
+		super(new File(baseName + ".osm.pbf"));
 	}
 
 	@Override
 	public void initForWrite() {
-		String filename = String.format(Locale.ROOT, "%08d.osm.pbf", mapId);
 		try {
-			output = new BlockOutputStream(new FileOutputStream(new File(outputDir, filename)));
+			output = new BlockOutputStream(new FileOutputStream(outputFile));
 			serializer = new PBFSerializer(output);
-			writeHeader();
 		} catch (IOException e) {
 			System.out.println("Could not open or write file header. Reason: " + e.getMessage());
 			throw new RuntimeException(e);
 		}
+
 	}
 
-	private void writeHeader() {
+	private void writeHeader(OsmBounds osmBounds) {
 		Osmformat.HeaderBlock.Builder headerblock = Osmformat.HeaderBlock.newBuilder();
 
 		Osmformat.HeaderBBox.Builder pbfBbox = Osmformat.HeaderBBox.newBuilder();
-		pbfBbox.setLeft(serializer.mapRawDegrees(Utils.toDegrees(bounds.getMinLong())));
-		pbfBbox.setBottom(serializer.mapRawDegrees(Utils.toDegrees(bounds.getMinLat())));
-		pbfBbox.setRight(serializer.mapRawDegrees(Utils.toDegrees(bounds.getMaxLong())));
-		pbfBbox.setTop(serializer.mapRawDegrees(Utils.toDegrees(bounds.getMaxLat())));
+		pbfBbox.setLeft(serializer.mapRawDegrees(osmBounds.getMinLong()));
+		pbfBbox.setBottom(serializer.mapRawDegrees(osmBounds.getMinLat()));
+		pbfBbox.setRight(serializer.mapRawDegrees(osmBounds.getMaxLong()));
+		pbfBbox.setTop(serializer.mapRawDegrees(osmBounds.getMaxLat()));
 		headerblock.setBbox(pbfBbox);
 
 		finishHeader(headerblock);
@@ -483,8 +480,7 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 	/**
 	 * Write the header fields that are always needed.
 	 * 
-	 * @param headerblock
-	 *            Incomplete builder to complete and write.
+	 * @param headerblock Incomplete builder to complete and write.
 	 */
 	public void finishHeader(Osmformat.HeaderBlock.Builder headerblock) {
 		headerblock.setWritingprogram("splitter-r" + Version.VERSION);
@@ -526,5 +522,10 @@ public class BinaryMapWriter extends AbstractOSMWriter {
 	@Override
 	public void write(Relation relation) {
 		serializer.processor.process(relation);
+	}
+
+	@Override
+	public void write(OsmBounds osmBounds) throws IOException {
+		writeHeader(osmBounds);
 	}
 }

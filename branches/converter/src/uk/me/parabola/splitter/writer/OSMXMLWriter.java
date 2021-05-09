@@ -28,11 +28,10 @@ import java.util.Locale;
 import java.util.zip.GZIPOutputStream;
 
 import it.unimi.dsi.fastutil.longs.LongArrayList;
-import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Element;
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.Relation;
-import uk.me.parabola.splitter.Utils;
 import uk.me.parabola.splitter.Way;
 
 public class OSMXMLWriter extends AbstractOSMWriter{
@@ -43,16 +42,18 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 	
 	private Writer writer;
 
-	public OSMXMLWriter(Area bounds, File outputDir, int mapId, int extra) {
-		super(bounds, outputDir, mapId, extra);
+	public OSMXMLWriter(File oFile) {
+		super(oFile);
+	}
+
+	public OSMXMLWriter(String baseName) {
+		super(new File(baseName+".osm.gz"));
 	}
 
 	@Override
 	public void initForWrite() {
-
-		String filename = String.format(Locale.ROOT, "%08d.osm.gz", mapId);
 		try {
-			FileOutputStream fos = new FileOutputStream(new File(outputDir, filename));
+			FileOutputStream fos = new FileOutputStream(outputFile);
 			OutputStream zos = new GZIPOutputStream(fos);
 			writer = new OutputStreamWriter(zos, StandardCharsets.UTF_8);
 			writeHeader();
@@ -67,15 +68,18 @@ public class OSMXMLWriter extends AbstractOSMWriter{
 		String apiVersion = (versionMethod == REMOVE_VERSION) ? "version='0.5'" : "version='0.6'";
 
 		writeString("<osm " + apiVersion + " generator='splitter' upload='false'>\n");
+	}
 
+	@Override
+	public void write(OsmBounds bounds) throws IOException {
 		writeString("<bounds minlat='");
-		writeLongDouble(Utils.toDegrees(bounds.getMinLat()));
+		writeLongDouble(bounds.getMinLat());
 		writeString("' minlon='");
-		writeLongDouble(Utils.toDegrees(bounds.getMinLong()));
+		writeLongDouble(bounds.getMinLong());
 		writeString("' maxlat='");
-		writeLongDouble(Utils.toDegrees(bounds.getMaxLat()));
+		writeLongDouble(bounds.getMaxLat());
 		writeString("' maxlon='");
-		writeLongDouble(Utils.toDegrees(bounds.getMaxLong()));
+		writeLongDouble(bounds.getMaxLong());
 		writeString("'/>\n");
 	}
 

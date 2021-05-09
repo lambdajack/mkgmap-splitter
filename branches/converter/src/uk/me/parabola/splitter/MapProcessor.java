@@ -52,7 +52,7 @@ public interface MapProcessor {
 	 * files provided as input.
 	 * @param bounds the area covered by the map.
 	 */
-	void boundTag(Area bounds);
+	void boundTag(OsmBounds osmBounds);
 
 
 	/**

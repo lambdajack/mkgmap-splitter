@@ -65,7 +65,7 @@ public class QueueProcessor extends AbstractMapProcessor {
 	}
 
 	@Override
-	public void boundTag(Area bounds) {
+	public void boundTag(OsmBounds bounds) {
 		addToQueue(bounds);
 	}
 
@@ -120,7 +120,7 @@ public class QueueProcessor extends AbstractMapProcessor {
 		}
 	}
 
-	private void addToQueue(Area bounds) {
+	private void addToQueue(OsmBounds bounds) {
 		try {
 			flush();
 			queue.put(new OSMMessage(bounds));

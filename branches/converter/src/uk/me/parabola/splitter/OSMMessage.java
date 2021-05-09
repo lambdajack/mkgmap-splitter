@@ -23,7 +23,7 @@ public class OSMMessage {
 
 	// either el or bounds must be null
 	final Element[] elements;
-	final Area bounds;
+	final OsmBounds bounds;
 	final Type type;
 
 	public OSMMessage(Element[] elements) {
@@ -32,7 +32,7 @@ public class OSMMessage {
 		bounds = null;
 	}
 
-	public OSMMessage(Area bounds) {
+	public OSMMessage(OsmBounds bounds) {
 		this.bounds = bounds;
 		type = Type.BOUNDS;
 		elements = null;

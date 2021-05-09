@@ -18,11 +18,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import uk.me.parabola.splitter.tools.Long2IntClosedMapFunction;
 import uk.me.parabola.splitter.tools.OSMId2ObjectMap;
 import uk.me.parabola.splitter.tools.SparseLong2IntMap;
-import uk.me.parabola.splitter.writer.OSMWriter;
+import uk.me.parabola.splitter.writer.BoundedOsmWriter;
 
 /**
  * Stores data that is needed in different passes of the program.
@@ -44,7 +45,7 @@ public class DataStorer {
 	private SparseLong2IntMap usedWays = null;
 	private final OSMId2ObjectMap<Integer> usedRels = new OSMId2ObjectMap<>();
 	private boolean idsAreNotSorted;
-	private OSMWriter[] writers;
+	private BoundedOsmWriter[] writers;
 	/**
 	 * map with relations that should be complete and are written to only one
 	 * tile
@@ -82,7 +83,7 @@ public class DataStorer {
 		return areaDictionary.getExtendedArea(idx);
 	}
 
-	public void setWriters(OSMWriter[] writers) {
+	public void setWriters(BoundedOsmWriter[] writers) {
 		this.writers = writers;
 	}
 
@@ -161,7 +162,7 @@ public class DataStorer {
 		}
 	}
 
-	public OSMWriter[] getWriters() {
+	public BoundedOsmWriter[] getWriters() {
 		return writers;
 	}
 

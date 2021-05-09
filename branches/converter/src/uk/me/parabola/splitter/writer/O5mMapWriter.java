@@ -22,16 +22,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Locale;
 import java.util.Map;
 
 import it.unimi.dsi.fastutil.longs.LongArrayList;
-import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Element;
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.Relation;
 import uk.me.parabola.splitter.Relation.Member;
-import uk.me.parabola.splitter.Utils;
 import uk.me.parabola.splitter.Way;
 
 /**
@@ -42,7 +40,7 @@ import uk.me.parabola.splitter.Way;
  * @author GerdP
  *
  */
-public class O5mMapWriter extends AbstractOSMWriter{
+public class O5mMapWriter extends AbstractOSMWriter {
 	// O5M data set constants
 	private static final int NODE_DATASET = 0x10;
 	private static final int WAY_DATASET = 0x11;
@@ -132,8 +130,12 @@ public class O5mMapWriter extends AbstractOSMWriter{
 	
 	//private long countCollisions;
 	
-	public O5mMapWriter(Area bounds, File outputDir, int mapId, int extra) {
-		super(bounds, outputDir, mapId, extra);
+	public O5mMapWriter(File oFile) {
+		super(oFile);
+	}
+
+	public O5mMapWriter(String baseName) {
+		super(new File(baseName+ ".o5m"));
 	}
 
 	private void reset() throws IOException{
@@ -168,12 +170,10 @@ public class O5mMapWriter extends AbstractOSMWriter{
 		numberConversionBuf = new byte[60];
 		resetVars();
 
-		String filename = String.format(Locale.ROOT, "%08d.o5m", mapId);
 		try {
-			os = new BufferedOutputStream(new FileOutputStream(new File(outputDir, filename)));
+			os = new BufferedOutputStream(new FileOutputStream(outputFile));
 			os.write(RESET_FLAG);
 			writeHeader();
-			writeBBox();
 		} catch (IOException e) {
 			System.out.println("Could not open or write file header. Reason: " + e.getMessage());
 			throw new RuntimeException(e);
@@ -188,14 +188,15 @@ public class O5mMapWriter extends AbstractOSMWriter{
 	}
 
 	
-	private void writeBBox() throws IOException {
+	@Override
+	public void write(OsmBounds osmBounds) throws IOException {
 		ByteArrayOutputStream stream = new ByteArrayOutputStream();
-		writeSignedNum((long)(Utils.toDegrees(bounds.getMinLong()) * FACTOR), stream);
-		writeSignedNum((long)(Utils.toDegrees(bounds.getMinLat()) * FACTOR), stream);
-		writeSignedNum((long)(Utils.toDegrees(bounds.getMaxLong()) * FACTOR), stream);
-		writeSignedNum((long)(Utils.toDegrees(bounds.getMaxLat()) * FACTOR), stream);
-		writeDataset(BBOX_DATASET,stream);
-	}
+		writeSignedNum((long) (osmBounds.getMinLong() * FACTOR), stream);
+		writeSignedNum((long) (osmBounds.getMinLat() * FACTOR), stream);
+		writeSignedNum((long) (osmBounds.getMaxLong() * FACTOR), stream);
+		writeSignedNum((long) (osmBounds.getMaxLat() * FACTOR), stream);
+		writeDataset(BBOX_DATASET, stream);
+	}	
 
 	private void writeDataset(int fileType, ByteArrayOutputStream stream) throws IOException {
 		os.write(fileType);

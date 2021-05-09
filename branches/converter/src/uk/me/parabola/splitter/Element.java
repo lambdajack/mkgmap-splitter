@@ -62,7 +62,7 @@ public abstract class Element {
 			return;
 		// Most elements are nodes. Most nodes have no tags. Create the tag table lazily
 		if (tags == null)
-			tags = new ArrayList<>(4);
+			tags = new ArrayList<>();
 
 		tags.add(new Tag(key, value));
 	}

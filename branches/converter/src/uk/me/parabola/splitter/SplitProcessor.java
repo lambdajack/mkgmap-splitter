@@ -16,6 +16,7 @@ import uk.me.parabola.splitter.Relation.Member;
 import uk.me.parabola.splitter.args.SplitterParams;
 import uk.me.parabola.splitter.tools.Long2IntClosedMapFunction;
 import uk.me.parabola.splitter.tools.SparseLong2IntMap;
+import uk.me.parabola.splitter.writer.BoundedOsmWriter;
 import uk.me.parabola.splitter.writer.OSMWriter;
 
 import java.io.IOException;
@@ -28,7 +29,7 @@ import java.util.concurrent.BlockingQueue;
  * Splits a map into multiple areas.
  */
 class SplitProcessor extends AbstractMapProcessor {
-	private final OSMWriter[] writers;
+	private final BoundedOsmWriter[] writers;
 
 	private SparseLong2IntMap coords;
 	private SparseLong2IntMap ways; 	
@@ -261,7 +262,7 @@ class SplitProcessor extends AbstractMapProcessor {
 			for (int n : writerCandidates.set) {
 				if (n < writerOffset || n > lastWriter)
 					continue;
-				OSMWriter writer = writers[n];
+				BoundedOsmWriter writer = writers[n];
 				boolean found;
 				if (writerCandidates.testNeeded){
 					found = writer.getExtendedBounds().contains(currentNode);

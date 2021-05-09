@@ -27,11 +27,7 @@ import uk.me.parabola.splitter.args.SplitterParams;
 import uk.me.parabola.splitter.kml.KmlWriter;
 import uk.me.parabola.splitter.solver.AreasCalculator;
 import uk.me.parabola.splitter.writer.AbstractOSMWriter;
-import uk.me.parabola.splitter.writer.BinaryMapWriter;
-import uk.me.parabola.splitter.writer.O5mMapWriter;
-import uk.me.parabola.splitter.writer.OSMWriter;
-import uk.me.parabola.splitter.writer.OSMXMLWriter;
-import uk.me.parabola.splitter.writer.PseudoOSMWriter;
+import uk.me.parabola.splitter.writer.BoundedOsmWriter;
 
 /**
  * Splitter for OSM files with the purpose of providing input files for mkgmap.
@@ -150,6 +146,11 @@ public class Main {
 			e.printStackTrace();
 			return 1;
 		}
+		reportTime(start);
+		return rc;
+	}
+
+	public static void reportTime(Instant start) {
 		System.out.println("Time finished: " + new Date());
 		Duration duration = Duration.between(start, Instant.now());
 		long seconds = duration.getSeconds();
@@ -158,14 +159,12 @@ public class Main {
 			seconds -= hours * 3600;
 			long minutes = seconds / 60;
 			seconds -= minutes * 60;
-			System.out.println("Total time taken: " + 
-													(hours > 0 ? hours + (hours > 1 ? " hours " : " hour ") : "") +
-													(minutes > 0 ? minutes + (minutes > 1 ? " minutes " : " minute ") : "") +
-													(seconds > 0 ? seconds + (seconds > 1 ? " seconds" : " second") : ""));
-        }
-		else
+			System.out.println("Total time taken: " + (hours > 0 ? hours + (hours > 1 ? " hours " : " hour ") : "")
+					+ (minutes > 0 ? minutes + (minutes > 1 ? " minutes " : " minute ") : "")
+					+ (seconds > 0 ? seconds + (seconds > 1 ? " seconds" : " second") : ""));
+		} else
 			System.out.println("Total time taken: " + duration.getNano() / 1000000 + " ms");
-		return rc;
+		
 	}
 
 	/**
@@ -466,20 +465,13 @@ public class Main {
 		}
 	}
 
-	private OSMWriter[] createWriters(List<Area> areas) {
-		OSMWriter[] allWriters = new OSMWriter[areas.size()];
+	private BoundedOsmWriter[] createWriters(List<Area> areas) {
+		BoundedOsmWriter[] allWriters = new BoundedOsmWriter[areas.size()];
 		for (int j = 0; j < allWriters.length; j++) {
 			Area area = areas.get(j);
-			AbstractOSMWriter w;
 			String outputType = mainOptions.getOutput();
-			if ("pbf".equals(outputType))
-				w = new BinaryMapWriter(area, fileOutputDir, area.getMapId(), overlapAmount);
-			else if ("o5m".equals(outputType))
-				w = new O5mMapWriter(area, fileOutputDir, area.getMapId(), overlapAmount);
-			else if ("simulate".equals(outputType))
-				w = new PseudoOSMWriter(area);
-			else
-				w = new OSMXMLWriter(area, fileOutputDir, area.getMapId(), overlapAmount);
+			BoundedOsmWriter w = new BoundedOsmWriter(area, fileOutputDir, area.getMapId(), overlapAmount, outputType);
+
 			switch (mainOptions.getHandleElementVersion()) {
 			case "keep":
 				w.setVersionMethod(AbstractOSMWriter.KEEP_VERSION);

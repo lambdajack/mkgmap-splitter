@@ -13,8 +13,10 @@
  
 package uk.me.parabola.splitter.writer;
 
-import uk.me.parabola.splitter.Area;
+import java.io.File;
+
 import uk.me.parabola.splitter.Node;
+import uk.me.parabola.splitter.OsmBounds;
 import uk.me.parabola.splitter.Relation;
 import uk.me.parabola.splitter.Way;
 
@@ -25,11 +27,10 @@ import uk.me.parabola.splitter.Way;
  */
 public class PseudoOSMWriter extends AbstractOSMWriter{
 	
-	public PseudoOSMWriter(Area bounds) {
-		// no overlap for pseudo writers !
-		super(bounds, null, bounds.getMapId(), 0);
+	public PseudoOSMWriter(String baseName) {
+		super(new File(baseName+".pseudo"));
 	}
-	
+
 	@Override
 	public void write(Relation rel) {}
 	
@@ -40,8 +41,13 @@ public class PseudoOSMWriter extends AbstractOSMWriter{
 	public void write(Node node) {}
 	
 	@Override
-	public void initForWrite() {}
-	
-	@Override
 	public void finishWrite() {}
+
+	@Override
+	public void write(OsmBounds bounds) {}
+
+	@Override
+	public void initForWrite() {
+		// nothing to do
+	}
 }
