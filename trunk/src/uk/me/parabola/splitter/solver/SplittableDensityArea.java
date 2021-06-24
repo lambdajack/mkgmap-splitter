@@ -13,12 +13,6 @@
 
 package uk.me.parabola.splitter.solver;
 
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import uk.me.parabola.splitter.Area;
-import uk.me.parabola.splitter.RoundingUtils;
-import uk.me.parabola.splitter.SplitFailedException;
-import uk.me.parabola.splitter.Utils;
-
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.util.ArrayList;
@@ -27,6 +21,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import uk.me.parabola.splitter.Area;
+import uk.me.parabola.splitter.RoundingUtils;
+import uk.me.parabola.splitter.SplitFailedException;
+import uk.me.parabola.splitter.Utils;
+import uk.me.parabola.splitter.kml.KmlWriter;
 
 /**
  * Splits a density map into multiple areas, none of which
@@ -179,13 +180,14 @@ public class SplittableDensityArea {
 				System.err.println("Bounding polygon doesn't intersect with the bounding box of the input file(s)");
 				return Collections.emptyList();
 			}
-			
-			prepare(polygonArea);
-			Tile tile = new Tile(extraDensityInfo, rasteredArea.getBounds());
-			Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredArea);
-			return getAreas(solution, polygonArea);
+			if (rasteredArea.isSingular()) {
+				prepare(polygonArea);
+				Tile tile = new Tile(extraDensityInfo, rasteredArea.getBounds());
+				Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredArea);
+				return getAreas(solution, polygonArea);
+			}
 		}
-		if (polygonArea.intersects(Utils.area2Rectangle(allDensities.getBounds(),0)))
+		if (polygonArea.intersects(Utils.area2Rectangle(allDensities.getBounds(), 0)))
 			return splitPolygon(polygonArea);
 		System.err.println("Bounding polygon doesn't intersect with the bounding box of the input file(s)");
 		return Collections.emptyList();
@@ -229,7 +231,7 @@ public class SplittableDensityArea {
 				}
 			}
 			if (distinctPart.isEmpty() == false && distinctPart.intersects(Utils.area2Rectangle(allDensities.getBounds(),0))){
-//				KmlWriter.writeKml("e:/ld_sp/distinct_"+namedPart.name, "distinct", distinctPart);
+//				KmlWriter.writeKml("e:/ld_sp/distinct_"+namedPart.getName(), "distinct", distinctPart);
 				if (wasDistinct == false)
 					System.out.println("splitting distinct part of " + namedPart.getName());
 				else 
@@ -515,7 +517,8 @@ public class SplittableDensityArea {
 	 * @return a solution (maybe empty)
 	 */
 	private Solution findSolutionWithSinglePolygon(int depth, final Tile tile, java.awt.geom.Area rasteredPolygonArea) {
-		assert rasteredPolygonArea.isSingular();
+		if (!rasteredPolygonArea.isSingular())
+			throw new SplitFailedException("Internal error: Rastered polygon is not singular");
 		if (rasteredPolygonArea.isRectangular()){
 			Tile part = new Tile(extraDensityInfo, rasteredPolygonArea.getBounds());
 			return solveRectangularArea(part);

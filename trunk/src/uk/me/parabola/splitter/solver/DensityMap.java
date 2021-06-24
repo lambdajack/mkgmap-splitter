@@ -13,6 +13,7 @@
 
 package uk.me.parabola.splitter.solver;
 
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.io.File;
 import java.io.FileInputStream;
@@ -21,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
+import java.util.List;
 import java.util.regex.Pattern;
 
 import uk.me.parabola.splitter.Area;
@@ -63,17 +65,17 @@ public class DensityMap {
 	 * @param polygonArea the polygon area 
 	 * @return an area with rectilinear shape that approximates the polygon area 
 	 */
-	public java.awt.geom.Area rasterPolygon(java.awt.geom.Area polygonArea){
+	public java.awt.geom.Area rasterPolygon(java.awt.geom.Area polygonArea) {
 		if (polygonArea == null)
 			return null;
 		java.awt.geom.Area simpleArea = new java.awt.geom.Area();
 		if (polygonArea.intersects(Utils.area2Rectangle(bounds, 0)) == false)
 			return simpleArea;
 		int gridElemWidth = bounds.getWidth() / width;
-		int gridElemHeight= bounds.getHeight()/ height;
+		int gridElemHeight = bounds.getHeight() / height;
 		Rectangle polygonBbox = polygonArea.getBounds();
-		int minLat = Math.max((int)polygonBbox.getMinY(), bounds.getMinLat());
-		int maxLat = Math.min((int)polygonBbox.getMaxY(), bounds.getMaxLat());
+		int minLat = Math.max((int) polygonBbox.getMinY(), bounds.getMinLat());
+		int maxLat = Math.min((int) polygonBbox.getMaxY(), bounds.getMaxLat());
 		int minY = latToY(minLat);
 		int maxY = latToY(maxLat);
 		assert minY >= 0 && minY <= height;
@@ -82,7 +84,7 @@ public class DensityMap {
 			int lon = xToLon(x);
 			if (lon + gridElemWidth < polygonBbox.getMinX() 
 					|| lon > polygonBbox.getMaxX()
-					|| polygonArea.intersects(lon, polygonBbox.getMinY(), gridElemWidth, polygonBbox.getHeight()) == false){
+					|| !polygonArea.intersects(lon, polygonBbox.getMinY(), gridElemWidth, polygonBbox.getHeight())) {
 				continue;
 			}
 			int firstY = -1;
@@ -101,6 +103,14 @@ public class DensityMap {
 			}
 			if (firstY >= 0){
 				simpleArea.add(new java.awt.geom.Area(new Rectangle(x,firstY,1,height-firstY)));
+			}
+		}
+		if (!simpleArea.isSingular()) {
+			List<List<Point>> shapes = Utils.areaToShapes(simpleArea);
+			if (shapes.removeIf(s -> !Utils.clockwise(s))) {
+				System.out.println("Warning: Rastered polaygon area contains holes, polygon is probably concave, trying to fix this");
+				simpleArea.reset();
+				shapes.forEach(s -> simpleArea.add(Utils.shapeToArea(s)));
 			}
 		}
 		return simpleArea;
@@ -147,11 +157,11 @@ public class DensityMap {
 		return nodeMap[x] != null ? nodeMap[x][y] : 0;
 	}
 
-	public int[][] getyxMap(){
+	public int[][] getyxMap() {
 		int[][] yxMap = new int[height][];
 		for (int y = 0; y < height; y++) {
 			for (int x = 0; x < width; x++) {
-				int count = (nodeMap[x] == null) ? 0:nodeMap[x][y];
+				int count = (nodeMap[x] == null) ? 0 : nodeMap[x][y];
 				if (count > 0) {
 					if (yxMap[y] == null)
 						yxMap[y] = new int[width];
