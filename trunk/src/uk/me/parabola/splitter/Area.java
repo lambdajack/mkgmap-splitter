@@ -12,11 +12,8 @@
  */
 package uk.me.parabola.splitter;
 
-import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * A map area in map units.  There is a constructor available for creating
@@ -230,16 +227,6 @@ public class Area {
 
 	public void setPseudoArea(boolean isPseudoArea) {
 		this.isPseudoArea = isPseudoArea;
-	}
-
-	public List<Point> toPoints() {
-		List<Point> points = new ArrayList<>(5);
-		points.add(new Point(minLat, minLong));
-		points.add(new Point(minLat, maxLong));
-		points.add(new Point(maxLat, maxLong));
-		points.add(new Point(maxLat, minLong));
-		points.add(points.get(0));
-		return points; 
 	}
 
 }
