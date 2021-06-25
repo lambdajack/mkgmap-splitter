@@ -413,7 +413,8 @@ public class SplittableDensityArea {
 		int countEmpty = 0;
 		long countLastPart = 0;
 		long countRemaining = tile.getCount();
-		long maxEmpty = Utils.toMapUnit(30) / (1 << shift);
+		int maxEmpty = Utils.toMapUnit(30) / (1 << shift);
+		int minEmpty = Utils.toMapUnit(10) / (1 << shift);
 		if (splitHoriz) {
 			for (int i = 0; i < tile.width; i++) {
 				long count = tile.getColSum(i);
@@ -423,7 +424,7 @@ public class SplittableDensityArea {
 					countEmpty++;
 				} else {
 					if (countEmpty > maxEmpty
-							|| (countEmpty > 10 && countLastPart > maxNodes / 3 && countRemaining > maxNodes / 3)) {
+							|| (countEmpty > minEmpty && countLastPart > maxNodes / 3 && countRemaining > maxNodes / 3)) {
 						java.awt.geom.Area empty = new java.awt.geom.Area(
 								new Rectangle(firstEmpty, tile.y, countEmpty, tile.height));
 						area.subtract(empty);
@@ -444,7 +445,7 @@ public class SplittableDensityArea {
 					countEmpty++;
 				} else {
 					if (countEmpty > maxEmpty
-							|| (countEmpty > 10 && countLastPart > maxNodes / 3 && countRemaining > maxNodes / 3)) {
+							|| (countEmpty > minEmpty && countLastPart > maxNodes / 3 && countRemaining > maxNodes / 3)) {
 						java.awt.geom.Area empty = new java.awt.geom.Area(
 								new Rectangle(tile.x, firstEmpty, tile.width, countEmpty));
 						area.subtract(empty);
@@ -617,7 +618,7 @@ public class SplittableDensityArea {
 			double ratio = tile.getAspectRatio();
 			if (ratio < 1.0)
 				ratio = 1.0 / ratio;
-			if (ratio < maxAspectRatio) {
+			if (ratio <= maxAspectRatio) {
 				if (ignoreSize || maxNodes >= LARGE_MAX_NODES || checkSize(tile))
 					addAndReturn = true;
 			}
@@ -763,8 +764,10 @@ public class SplittableDensityArea {
 		if (startTile.getCount() == 0)
 			return new Solution(maxNodes);
 		searchLimit = startSearchLimit;
-		minNodes = Math.max(Math.min((long) (0.05 * maxNodes), extraDensityInfo.getNodeCount()), 1);
-
+		
+		final long startMinNodes = Math.max(Math.min((long) (0.05 * maxNodes), extraDensityInfo.getNodeCount()), 1);
+		minNodes = startMinNodes;
+		
 		if (extraDensityInfo.getNodeCount() / maxNodes < 4) {
 			maxAspectRatio = 32;
 		} else {
@@ -780,6 +783,7 @@ public class SplittableDensityArea {
 		if (startTile.getCount() < 300 * maxNodes && (checkSize(startTile) || startTile.getCount() < 10 * maxNodes)) {
 			searchAll = true;
 		}
+		boolean algorithmnWasSwitched = false;
 
 		if (!beQuiet)
 			System.out.println("Trying to find nice split for " + startTile);
@@ -836,6 +840,7 @@ public class SplittableDensityArea {
 			if (minNodes > VERY_NICE_FILL_RATIO * maxNodes)
 				minNodes = (long) (VERY_NICE_FILL_RATIO * maxNodes);
 			if (saveMaxAspectRatio == maxAspectRatio && saveMinNodes == minNodes) {
+				// no improvement found
 				if (bestSolution.isEmpty() || bestSolution.getWorstMinNodes() < 0.5 * maxNodes) {
 					if (countBad > searchLimit && searchLimit < 5_000_000) {
 						searchLimit *= 2;
@@ -867,13 +872,12 @@ public class SplittableDensityArea {
 
 						continue;
 					}
-					if (searchAll) {
-						searchAll = false;
-						if (!bestSolution.isEmpty())
-							minNodes = bestSolution.getWorstMinNodes() + 1;
-						else
-							minNodes = maxNodes / 100;
-						System.out.println("Still no good solution found, trying alternate algorithm");
+					if (!algorithmnWasSwitched) {
+						System.out.println("Still no good solution found, trying alternative algorithm");
+						minNodes = startMinNodes;
+						searchLimit = startSearchLimit;
+						searchAll = !searchAll;
+						algorithmnWasSwitched = true;
 						continue;
 					}
 				}
