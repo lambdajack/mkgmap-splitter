@@ -169,8 +169,8 @@ public class AreasCalculator {
 			if (exactArea != null)
 				System.out.println("Exact map coverage after applying bounding box of polygon-file is " + exactArea);
 			else {
-				System.out.println("Exact map coverage after applying bounding box of polygon-file is an empty area");
-				return;
+				throw new SplitFailedException(
+						"Exact map coverage after applying bounding box of polygon-file is an empty area");
 			}
 		}
 		
