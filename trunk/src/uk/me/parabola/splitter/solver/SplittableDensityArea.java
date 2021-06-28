@@ -989,7 +989,7 @@ public class SplittableDensityArea {
 			return tests;
 		}
 		if (range > 1024 && (axis == AXIS_HOR && tile.width >= maxTileWidth
-				|| axis == AXIS_VERT && tile.height >= maxTileWidth)) {
+				|| axis == AXIS_VERT && tile.height >= maxTileHeight)) {
 			// large tile, just split at a few valid positions
 			for (int i = 5; i > 1; --i)
 				tests.add(start + range / i);
