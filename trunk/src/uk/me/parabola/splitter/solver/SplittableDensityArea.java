@@ -678,6 +678,7 @@ public class SplittableDensityArea {
 			}
 			countDone++;
 			if (alreadyDone != null && countDone <= alreadyDone.intValue()) {
+				usedTestPos++; // we already checked this split before
 				continue;
 			}
 			int splitPos = todoList.getInt(usedTestPos++);
