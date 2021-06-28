@@ -706,6 +706,8 @@ public class SplittableDensityArea {
 			Solution[] sols = new Solution[2];
 			int countOK = 0;
 			for (int i = 0; i < 2; i++) {
+				if (i == 0 && alreadyDone != null)
+					continue;
 				// depth first recursive search
 //				long t1 = System.currentTimeMillis();
 				sols[i] = findSolution(depth + 1, parts[i], tile, smi);
@@ -778,7 +780,7 @@ public class SplittableDensityArea {
 		goodSolutions = new HashMap<>(GOOD_SOL_INIT_SIZE);
 		goodRatio = 0.5;
 		TileMetaInfo smiStart = new TileMetaInfo(startTile, null, null);
-		if (startTile.getCount() < 300 * maxNodes && (checkSize(startTile) || startTile.getCount() < 10 * maxNodes)) {
+		if (!ignoreSize && startTile.getCount() < 300 * maxNodes && (checkSize(startTile) || startTile.getCount() < 10 * maxNodes)) {
 			searchAll = true;
 		}
 		boolean algorithmnWasSwitched = false;
@@ -789,7 +791,11 @@ public class SplittableDensityArea {
 		long t1 = System.currentTimeMillis();
 		incomplete = new LinkedHashMap<>();
 		resetCaches();
+		boolean clearIncomplete = false;
 		for (int numLoops = 0; numLoops < MAX_LOOPS; numLoops++) {
+			if (clearIncomplete)
+				incomplete.clear();
+			clearIncomplete = true;
 			double saveMaxAspectRatio = maxAspectRatio;
 			long saveMinNodes = minNodes;
 			boolean foundBetter = false;
@@ -842,6 +848,7 @@ public class SplittableDensityArea {
 				if (bestSolution.isEmpty() || bestSolution.getWorstMinNodes() < 0.5 * maxNodes) {
 					if (countBad > searchLimit && searchLimit < 5_000_000) {
 						searchLimit *= 2;
+						clearIncomplete = false;
 						resetCaches();
 						System.out.println("No good solution found, duplicated search-limit to " + searchLimit);
 						continue;
