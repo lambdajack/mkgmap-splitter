@@ -582,7 +582,7 @@ public class SplittableDensityArea {
 					}
 				}
 			}
-			if (part1Sol != null) {
+			if (part0Sol != null && part1Sol != null) {
 				part0Sol.merge(part1Sol);
 				return part0Sol;
 			}
