@@ -186,7 +186,11 @@ public class SplittableDensityArea {
 				prepare(polygonArea);
 				Tile tile = new Tile(extraDensityInfo, rasteredArea.getBounds());
 				Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredArea);
-				return getAreas(solution, polygonArea);
+				if (solution == null && rasteredArea.isRectangular())
+					return split();
+				if (solution != null) { 
+					return getAreas(solution, polygonArea);
+				}
 			}
 		}
 		if (polygonArea.intersects(Utils.area2Rectangle(allDensities.getBounds(), 0)))
@@ -524,11 +528,12 @@ public class SplittableDensityArea {
 	 * @param depth               recursion depth
 	 * @param tile                the tile to split
 	 * @param rasteredPolygonArea an area describing a rectilinear shape
-	 * @return a solution (maybe empty)
+	 * @return a solution (maybe empty), or null if rasteredPolygon is not rectangular
 	 */
 	private Solution findSolutionWithSinglePolygon(int depth, final Tile tile, java.awt.geom.Area rasteredPolygonArea) {
-		if (!rasteredPolygonArea.isSingular())
-			throw new SplitFailedException("Internal error: Rastered polygon is not singular");
+		if (!rasteredPolygonArea.isSingular()) {
+			return null;
+		}
 		if (rasteredPolygonArea.isRectangular()) {
 			Tile part = new Tile(extraDensityInfo, rasteredPolygonArea.getBounds());
 			return solveRectangularArea(part);
@@ -792,6 +797,7 @@ public class SplittableDensityArea {
 		incomplete = new LinkedHashMap<>();
 		resetCaches();
 		boolean clearIncomplete = false;
+		Solution firstSolution = new Solution(maxNodes);
 		for (int numLoops = 0; numLoops < MAX_LOOPS; numLoops++) {
 			if (clearIncomplete)
 				incomplete.clear();
@@ -812,9 +818,10 @@ public class SplittableDensityArea {
 				if (foundBetter) {
 					Solution prevBest = bestSolution;
 					bestSolution = solution;
-
-					System.out.println("Best solution until now: " + bestSolution.toString() + ", elapsed search time: "
-							+ (System.currentTimeMillis() - t1) / 1000 + " s");
+					if (bestSolution.compareTo(firstSolution) < 0) {
+						System.out.println("Best solution until now: " + bestSolution.toString() + ", elapsed search time: "
+								+ (System.currentTimeMillis() - t1) / 1000 + " s");
+					}
 					filterGoodSolutions(bestSolution);
 					// change criteria to find a better(nicer) result
 					double factor = 1.10;
@@ -879,6 +886,8 @@ public class SplittableDensityArea {
 					}
 					if (!algorithmnWasSwitched) {
 						System.out.println("Still no good solution found, trying alternative algorithm");
+						firstSolution = bestSolution;
+						bestSolution = new Solution(maxNodes);
 						minNodes = startMinNodes;
 						searchLimit = startSearchLimit;
 						searchAll = !searchAll;
@@ -888,8 +897,9 @@ public class SplittableDensityArea {
 				}
 				break;
 			}
-
 		}
+		if (bestSolution.compareTo(firstSolution) > 0)
+			bestSolution = firstSolution;
 		if (!beQuiet)
 			printFinishMsg(bestSolution);
 		return bestSolution;
