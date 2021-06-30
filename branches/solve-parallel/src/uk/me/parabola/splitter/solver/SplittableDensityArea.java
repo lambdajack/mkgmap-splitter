@@ -940,8 +940,11 @@ public class SplittableDensityArea {
 			TileMetaInfo smiStart = new TileMetaInfo(startTile, null, null);
 			final String algoName = "Algorithm " + (searchAll ? "FULL" : "SOME") + ": ";
 			final long veryNiceMinNodes = (long) (VERY_NICE_FILL_RATIO * myMaxNodes);
-
+			boolean clearIncomplete = false;
 			for (int numLoops = 0; numLoops < MAX_LOOPS && !stopped; numLoops++) {
+				if (clearIncomplete) {
+					incomplete.clear();
+				}
 				// store values to be able to detect progress 
 				double saveMaxAspectRatio = maxAspectRatio;
 				long saveMinNodes = minNodes;
@@ -957,16 +960,18 @@ public class SplittableDensityArea {
 				if (stopped)
 					return;
 				if (solution != null) {
+					if (solution.size() < stopNumber) {
+						minNodes = (bestSolution.getWorstMinNodes() + solution.getWorstMinNodes()) / 2;
+						if(minNodes != saveMinNodes)
+							continue;
+						solution = null;
+					}
 					boolean foundBetter = bestSolution.compareTo(solution) > 0; 
 					if (foundBetter) {
-						if (solution.size() < stopNumber) {
-							long dd = 4;
-						}
 						Solution prevBest = bestSolution;
 						bestSolution = solution;
-						
 						System.out.println(algoName + "Best solution until now: " + bestSolution.toString()
-								+ ", elapsed search time: " + (System.currentTimeMillis() - t1) / 1000 + " s");
+						+ ", elapsed search time: " + (System.currentTimeMillis() - t1) / 1000 + " s");
 						goodCache.filterGoodSolutions(bestSolution);
 						// change criteria to find a better(nicer) result
 						double factor = 1.10;
@@ -993,11 +998,7 @@ public class SplittableDensityArea {
 				}
 				if (stopNumber == 0 && minNodes > veryNiceMinNodes)
 					minNodes = veryNiceMinNodes;
-				if (solution != null && solution.size() < stopNumber) {
-					minNodes = (bestSolution.getWorstMinNodes() + saveMinNodes) / 2;
-				}
-				
-				boolean clearIncomplete = true;
+				clearIncomplete = true;
 				maxAspectRatio = Math.min(32, Math.max(bestSolution.getWorstAspectRatio() / 2, NICE_MAX_ASPECT_RATIO));
 				if (saveMaxAspectRatio == maxAspectRatio && saveMinNodes == minNodes) {
 					// no improvement found
@@ -1024,9 +1025,6 @@ public class SplittableDensityArea {
 						return;
 					}
 				} 
-				if (clearIncomplete) {
-					incomplete.clear();
-				}
 			}
 		}
 
