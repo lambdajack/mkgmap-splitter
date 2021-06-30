@@ -858,7 +858,6 @@ public class SplittableDensityArea {
 				int splitPos = generator.next();
 				countDone++;
 				if (alreadyDone != null && countDone < alreadyDone.intValue()) {
-					long dd = 4;
 					continue;
 				}
 				// create the two parts of the tile
@@ -1042,8 +1041,6 @@ public class SplittableDensityArea {
 		int axis;
 		final Tile tile;
 		final TileMetaInfo smi;
-		final int start;
-		final int end;
 		int countAxis;
 		int usedTestPos;
 		private IntArrayList todoList;
@@ -1058,8 +1055,6 @@ public class SplittableDensityArea {
 			this.minNodes = minNodes;
 
 			axis = (tile.getAspectRatio() >= 1.0) ? AXIS_HOR : AXIS_VERT;
-			start = (axis == AXIS_HOR) ? tile.findValidStartX(smi) : tile.findValidStartY(smi);
-			end = (axis == AXIS_HOR) ? tile.findValidEndX(smi) : tile.findValidEndY(smi);
 			todoList = generateTestCases();
 		}
 
@@ -1084,6 +1079,8 @@ public class SplittableDensityArea {
 		}
 		
 		IntArrayList generateTestCases() {
+			final int start = (axis == AXIS_HOR) ? tile.findValidStartX(smi) : tile.findValidStartY(smi);
+			final int end = (axis == AXIS_HOR) ? tile.findValidEndX(smi) : tile.findValidEndY(smi); 			
 			if (searchAll) {
 				return Tile.genTests(start, end);
 			}
@@ -1124,7 +1121,7 @@ public class SplittableDensityArea {
 					// count is near (but below) a multiple of max-nodes, we have to test all
 					// candidates
 					// to make sure that we don't miss a good split
-					return (axis == AXIS_HOR) ? tile.genXTests(smi) : tile.genYTests(smi);
+					return Tile.genTests(start, end);
 				}
 				if (nMax == 2 || nMin == 2) {
 					tests.add((axis == AXIS_HOR) ? tile.findHorizontalMiddle(smi) : tile.findVerticalMiddle(smi));
