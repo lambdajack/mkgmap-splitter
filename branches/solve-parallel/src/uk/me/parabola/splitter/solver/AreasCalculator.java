@@ -205,14 +205,15 @@ public class AreasCalculator {
 	 */
 	public List<Area> calcAreas () {
 		Area roundedBounds = RoundingUtils.round(exactArea, mainOptions.getResolution());
-		SplittableDensityArea splittableArea = pass1Collector.getSplitArea(mainOptions.getSearchLimit(), roundedBounds);
+		DensityMap densityMap = pass1Collector.getDensityMap();
+		boolean trim = !mainOptions.isNoTrim();
+		SplittableDensityArea splittableArea = new SplittableDensityArea(densityMap.subset(roundedBounds), mainOptions.getSearchLimit(), trim);
 		if (splittableArea.hasData() == false) {
 			System.out.println("input file(s) have no data inside calculated bounding box");
 			return Collections.emptyList();
 		}
 		System.out.println("Rounded map coverage is " + splittableArea.getBounds());
 
-		splittableArea.setTrim(mainOptions.isNoTrim() == false);
 		splittableArea.setMapId(mainOptions.getMapid());
 		long startSplit = System.currentTimeMillis();
 		List<Area> areas;

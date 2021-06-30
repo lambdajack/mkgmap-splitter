@@ -40,8 +40,7 @@ public class Solution {
 
 	public Solution copy() {
 		Solution s = new Solution(this.maxNodes);
-		for (Tile t : tiles)
-			s.add(t);
+		tiles.forEach(s::add);
 		return s;
 	} 
 	
@@ -107,8 +106,9 @@ public class Solution {
 			return 0;
 		if (isEmpty() != other.isEmpty())
 			return isEmpty() ? 1 : -1;
-		if (isNice() != other.isNice())
-			return isNice() ? -1 : 1;
+		int d = Boolean.compare(isNice(), other.isNice());
+		if (d != 0)
+			return -d; // prefer this if nice
 		
 		if (worstMinNodes != other.worstMinNodes) {
 			// ignore minNodes when both are bad
@@ -251,15 +251,10 @@ public class Solution {
 	 * @return
 	 */
 	public boolean isNice() {
-		if (isEmpty())
+		if (isEmpty() ||
+				worstAspectRatio > SplittableDensityArea.NICE_MAX_ASPECT_RATIO)
 			return false;
-		if (worstAspectRatio > SplittableDensityArea.NICE_MAX_ASPECT_RATIO)
-			return false;
-		if (tiles.size() == 1)
-			return true;
-		if (worstMinNodes < maxNodes / 3)
-			return false;
-		return true;
+		return tiles.size() == 1 || worstMinNodes >= maxNodes / 3;
 	}
 	
 	@Override

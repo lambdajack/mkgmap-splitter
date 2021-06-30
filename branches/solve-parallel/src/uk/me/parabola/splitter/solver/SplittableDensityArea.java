@@ -17,10 +17,15 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import uk.me.parabola.splitter.Area;
@@ -45,45 +50,36 @@ public class SplittableDensityArea {
 	private static final double VERY_NICE_FILL_RATIO = 0.93;
 	private static final long LARGE_MAX_NODES = 10_000_000;
 	private static final int GOOD_SOL_INIT_SIZE = 1_000_000;
-
-	private double maxAspectRatio;
-	private long minNodes;
+	private static final double MAX_OUTSIDE_RATIO = 0.5; 
+	
 	private final int startSearchLimit;
-	private int searchLimit;
-	private double maxOutsidePolygonRatio = 0.5; // TODO: maybe reduce it when a good solution was found
+	
 
 	private final DensityMap allDensities;
 	private EnhancedDensityMap extraDensityInfo;
 
 	private boolean beQuiet = false;
 	private long maxNodes;
+	private long stopNumber;
 	private final int shift;
-
-	private HashSet<Tile> knownBad;
-	private LinkedHashMap<Tile, Integer> incomplete;
-	private long countBad;
-
-	/** if true enables an alternative algorithm */
-	private boolean searchAll = false;
-
-	final int maxTileHeight;
-	final int maxTileWidth;
-
-	private HashMap<Tile, Solution> goodSolutions;
-	private double goodRatio;
-	private boolean trimShape;
+	
+	private final boolean trimShape;
 	private boolean trimTiles;
-	private boolean allowEmptyPart = false;
+	private boolean allowEmptyPart;
 	private int currMapId;
 	private boolean hasEmptyPart;
 	private boolean ignoreSize;
+	private int maxTileHeight;
+	private int maxTileWidth;
 
-	public SplittableDensityArea(DensityMap densities, int startSearchLimit) {
+	public SplittableDensityArea(DensityMap densities, int startSearchLimit, boolean trim) {
 		this.shift = densities.getShift();
-		this.searchLimit = this.startSearchLimit = startSearchLimit;
+		this.startSearchLimit = startSearchLimit;
+		this.trimShape = trim;
+		allDensities = densities;
 		maxTileHeight = Utils.toMapUnit(MAX_LAT_DEGREES) / (1 << shift);
 		maxTileWidth = Utils.toMapUnit(MAX_LON_DEGREES) / (1 << shift);
-		allDensities = densities;
+		
 	}
 
 	public DensityMap getAllDensities() {
@@ -98,10 +94,6 @@ public class SplittableDensityArea {
 		this.maxNodes = maxNodes;
 	}
 
-	public void setTrim(boolean trim) {
-		this.trimShape = trim;
-	}
-
 	public boolean hasData() {
 		return allDensities != null && allDensities.getNodeCount() > 0;
 	}
@@ -114,15 +106,14 @@ public class SplittableDensityArea {
 	}
 
 	/**
-	 * Create the list of areas.
+	 * Calculate a solution (list of areas that either matches the given criteria or is empty) 
 	 * 
-	 * @return a list of areas, each containing no more than {@code maxNodes} nodes.
-	 *         Each area returned must be aligned to the appropriate overview map
-	 *         resolution.
+	 * @return solution (can be empty if none was found with the given criteria)
 	 */
-	private List<Area> split() {
+	private Solution split() {
+		Solution fullSolution = new Solution(maxNodes);
 		if (allDensities == null || allDensities.getNodeCount() == 0)
-			return Collections.emptyList();
+			return fullSolution;
 		prepare(null);
 		Tile startTile = new Tile(extraDensityInfo);
 		List<Tile> startTiles = new ArrayList<>();
@@ -134,12 +125,11 @@ public class SplittableDensityArea {
 			startTiles.add(startTile);
 		}
 
-		Solution fullSolution = new Solution(maxNodes);
 		int countNoSol;
 		while (true) {
 			countNoSol = 0;
 			for (Tile tile : startTiles) {
-				hasEmptyPart = false;
+				hasEmptyPart = false; // possibly overwritten in solveRectangularArea
 				if (!beQuiet)
 					System.out.println("Solving partition " + tile.toString());
 				Solution solution = solveRectangularArea(tile);
@@ -158,12 +148,12 @@ public class SplittableDensityArea {
 			allowEmptyPart = true;
 			fullSolution = new Solution(maxNodes);
 		}
-		if (countNoSol > 0)
+		if (countNoSol > 0 && stopNumber == 0)
 			throw new SplitFailedException("Failed to find a correct split");
-		System.out.println("Final solution: " + fullSolution.toString());
-		if (fullSolution.isNice())
-			System.out.println("This seems to be nice.");
-		return getAreas(fullSolution, null);
+		if (!beQuiet) {
+			printFinalSplitMsg(fullSolution);
+		}
+		return fullSolution;
 	}
 
 	/**
@@ -175,7 +165,7 @@ public class SplittableDensityArea {
 	 */
 	private List<Area> split(java.awt.geom.Area polygonArea) {
 		if (polygonArea == null)
-			return split();
+			return getAreas(split(), null);
 		if (polygonArea.isSingular()) {
 			java.awt.geom.Area rasteredArea = allDensities.rasterPolygon(polygonArea);
 			if (rasteredArea.isEmpty()) {
@@ -186,8 +176,8 @@ public class SplittableDensityArea {
 				prepare(polygonArea);
 				Tile tile = new Tile(extraDensityInfo, rasteredArea.getBounds());
 				Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredArea);
-				if (solution == null && rasteredArea.isRectangular())
-					return split();
+				if (solution == null && rasteredArea.isRectangular()) 
+					solution = split();
 				if (solution != null) { 
 					return getAreas(solution, polygonArea);
 				}
@@ -203,12 +193,13 @@ public class SplittableDensityArea {
 	 * Split a list of named polygons. Overlapping areas of the polygons are
 	 * extracted and each one is split for itself. A polygon may not be singular.
 	 * 
-	 * @param namedPolygons
+	 * @param namedPolygons list of polygons, if empty the tile bounds are used
 	 * @return list of areas
 	 */
 	public List<Area> split(List<PolygonDesc> namedPolygons) {
-		if (namedPolygons.isEmpty())
-			return split();
+		if (namedPolygons.isEmpty()) {
+			return getAreas(split(), null);
+		}
 		List<Area> result = new ArrayList<>();
 		class ShareInfo {
 			java.awt.geom.Area area;
@@ -281,14 +272,14 @@ public class SplittableDensityArea {
 	}
 
 	/**
-	 * Split a list of named polygons into a given number of tiles. This is probably
-	 * only useful with an empty list of polygons or a list containing one polygon.
+	 * Split into a given number of tiles.
 	 * 
 	 * @param wantedTiles
 	 * @return list of areas
 	 */
 	public List<Area> split(int wantedTiles) {
-		long currMaxNodes = this.allDensities.getNodeCount() / wantedTiles;
+		this.stopNumber = wantedTiles;
+		long currMaxNodes = (long) (this.allDensities.getNodeCount() / (wantedTiles * 0.95));
 		class Pair {
 			long maxNodes;
 			int numTiles;
@@ -303,18 +294,19 @@ public class SplittableDensityArea {
 		beQuiet = true;
 		ignoreSize = true;
 		while (true) {
-			setMaxNodes(currMaxNodes);
+			this.setMaxNodes(currMaxNodes);
 			System.out.println("Trying a max-nodes value of " + currMaxNodes + " to split "
 					+ allDensities.getNodeCount() + " nodes into " + wantedTiles + " areas");
-			List<Area> res = split();
-			if (res.isEmpty() || res.size() == wantedTiles) {
+			Solution sol = split();
+			
+			if (sol.isEmpty() || sol.size() == wantedTiles) {
 				beQuiet = false;
-				res = split();
-				return res;
+				printFinalSplitMsg(sol);
+				return getAreas(sol, null);
 			}
-			goodSolutions = new HashMap<>(GOOD_SOL_INIT_SIZE);
-			Pair pair = new Pair(currMaxNodes, res.size());
-			if (res.size() > wantedTiles) {
+			
+			Pair pair = new Pair(currMaxNodes, sol.size());
+			if (sol.size() > wantedTiles) {
 				if (bestAbove == null || bestAbove.numTiles > pair.numTiles
 						|| (bestAbove.numTiles == pair.numTiles && pair.maxNodes < bestAbove.maxNodes))
 					bestAbove = pair;
@@ -325,13 +317,14 @@ public class SplittableDensityArea {
 			}
 			long testMaxNodes;
 			if (bestBelow == null || bestAbove == null)
-				testMaxNodes = Math.min(Math.round((double) currMaxNodes * res.size() / wantedTiles),
+				testMaxNodes = Math.min(Math.round((double) currMaxNodes * sol.size() / wantedTiles),
 						this.allDensities.getNodeCount() - 1);
 			else
 				testMaxNodes = (bestBelow.maxNodes + bestAbove.maxNodes) / 2;
 			if (testMaxNodes == currMaxNodes) {
 				System.err.println("Cannot find a good split with exactly " + wantedTiles + " areas");
-				return res;
+				printFinalSplitMsg(sol);
+				return getAreas(sol, null);
 			}
 			currMaxNodes = testMaxNodes;
 		}
@@ -357,48 +350,50 @@ public class SplittableDensityArea {
 
 	}
 
-	/**
-	 * Check if the solution should be stored in the map of partial good solutions
-	 * 
-	 * @param tile the tile for which the solution was found
-	 * @param sol  the solution for the tile
-	 */
-	private void checkIfGood(Tile tile, Solution sol) {
-		if (sol.isNice() && sol.getTiles().size() >= 2 && sol.getWorstMinNodes() > (goodRatio * maxNodes)) {
-			Solution good = sol.copy();
-			// add new or replace worse solution
-			goodSolutions.compute(tile,
-					(k, v) -> v == null || v.getWorstMinNodes() < good.getWorstMinNodes() ? good : v);
+	private static class GoodSolutionsCache {
+		private final long maxNodes;
+		private final Map<Tile, Solution> goodSolutions = new ConcurrentHashMap<>(GOOD_SOL_INIT_SIZE);
+		private double goodRatio = 0.5;
+		
+		public GoodSolutionsCache(long maxNodes) {
+			this.maxNodes = maxNodes;
 		}
-	}
 
-	/**
-	 * Remove entries from the map of partial good solutions which cannot help to
-	 * improve the best solution.
-	 * 
-	 * @param best the best known solution
-	 */
-	private void filterGoodSolutions(Solution best) {
-		if (best == null || best.isEmpty())
-			return;
-		goodSolutions.entrySet().removeIf(entry -> entry.getValue().getWorstMinNodes() <= best.getWorstMinNodes());
-		goodRatio = Math.max(0.5, (double) best.getWorstMinNodes() / maxNodes);
-	}
-
-	/**
-	 * Search a solution for the given tile in the map of partial good solutions
-	 * 
-	 * @param tile the tile to split
-	 * @return a copy of the best known solution or null
-	 */
-	private Solution searchGoodSolutions(Tile tile) {
-		Solution sol = goodSolutions.get(tile);
-		if (sol != null) {
-			if (sol.getWorstMinNodes() < minNodes)
-				return null;
-			sol = sol.copy();
+		/**
+		 * Check if the solution should be stored in the map of partial good solutions
+		 * 
+		 * @param tile the tile for which the solution was found
+		 * @param sol  the solution for the tile
+		 */
+		private void checkIfGood(Tile tile, Solution sol) {
+			if (sol.isNice() && sol.getTiles().size() >= 2 && sol.getWorstMinNodes() > (goodRatio * maxNodes)) {
+				// add new or replace worse solution
+				goodSolutions.compute(tile,
+						(k, v) -> v == null || v.getWorstMinNodes() < sol.getWorstMinNodes() ? sol.copy() : v);
+			}
 		}
-		return sol;
+
+		/**
+		 * Remove entries from the map of partial good solutions which cannot help to
+		 * improve the best solution.
+		 * 
+		 * @param best the best known solution
+		 */
+		private void filterGoodSolutions(Solution best) {
+			if (best == null || best.isEmpty())
+				return;
+			final long badMinNodes = best.getWorstMinNodes();
+			goodSolutions.entrySet().removeIf(entry -> entry.getValue().getWorstMinNodes() <= badMinNodes);
+			goodRatio = Math.max(0.5, (double) badMinNodes / maxNodes);
+		}
+
+		public Solution get(Tile tile) {
+			return goodSolutions.get(tile);
+		}
+
+		public int size() {
+			return goodSolutions.size();
+		}
 	}
 
 	/**
@@ -505,7 +500,7 @@ public class SplittableDensityArea {
 			int resolution = 24 - allDensities.getShift();
 			shapeBounds = RoundingUtils.round(shapeBounds, resolution);
 			SplittableDensityArea splittableArea = new SplittableDensityArea(allDensities.subset(shapeBounds),
-					startSearchLimit);
+					startSearchLimit, trimShape);
 			splittableArea.setMaxNodes(maxNodes);
 			if (!splittableArea.hasData()) {
 				System.out.println(
@@ -596,167 +591,6 @@ public class SplittableDensityArea {
 	}
 
 	/**
-	 * Try to split the tile into nice parts recursively.
-	 * 
-	 * @param depth the recursion depth
-	 * @param tile  the tile to be split
-	 * @param smiParent meta info for parent tile
-	 * @return a solution instance or null
-	 */
-	private Solution findSolution(int depth, final Tile tile, Tile parent, TileMetaInfo smiParent) {
-		boolean addAndReturn = false;
-		if (tile.getCount() == 0) {
-			if (!allowEmptyPart) {
-				hasEmptyPart = true;
-				return null;
-			}
-			if (tile.width * tile.height <= 4)
-				return null;
-			return new Solution(maxNodes); // allow empty part of the world
-		} else if (tile.getCount() > maxNodes && tile.width == 1 && tile.height == 1) {
-			addAndReturn = true; // can't split further
-		} else if (tile.getCount() < minNodes && depth == 0) {
-			addAndReturn = true; // nothing to do
-		} else if (tile.getCount() < minNodes) {
-			return null;
-		} else if (tile.getCount() <= maxNodes) {
-			double ratio = tile.getAspectRatio();
-			if (ratio < 1.0)
-				ratio = 1.0 / ratio;
-			if (ratio <= maxAspectRatio) {
-				if (ignoreSize || maxNodes >= LARGE_MAX_NODES || checkSize(tile))
-					addAndReturn = true;
-			}
-		} else if (tile.width < 2 && tile.height < 2) {
-			return null;
-		}
-		if (addAndReturn) {
-			double outsidePolygonRatio = tile.calcOutsidePolygonRatio();
-			if (outsidePolygonRatio > maxOutsidePolygonRatio) {
-				return null;
-			}
-			Solution solution = new Solution(maxNodes);
-			solution.add(tile); // can't split further
-			return solution;
-		}
-		if (tile.getCount() < minNodes * 2) {
-			return null;
-		}
-		Solution cached = searchGoodSolutions(tile);
-		if (cached != null) {
-			return cached;
-		}
-		// we have to split the tile
-		Integer alreadyDone = null;
-		if (countBad == 0 && incomplete.size() > 0) {
-			alreadyDone = incomplete.remove(tile);
-			if (alreadyDone == null)
-				incomplete.clear(); // rest is not useful
-		}
-
-		if (alreadyDone == null && depth > 0 && tile.width * tile.height > 100) {
-			if (knownBad.contains(tile))
-				return null;
-		}
-
-		// copy the existing density info from parent
-		// typically, at least one half can be re-used
-		TileMetaInfo smi = new TileMetaInfo(tile, parent, smiParent);
-
-		// we have to split the tile
-		int axis = (tile.getAspectRatio() >= 1.0) ? AXIS_HOR : AXIS_VERT;
-
-		IntArrayList todoList = generateTestCases(axis, tile, smi);
-		int countAxis = 0;
-		int usedTestPos = 0;
-		int countDone = 0;
-		Solution bestSol = null;
-		while (true) {
-			if (usedTestPos >= todoList.size()) {
-				countAxis++;
-				if (countAxis > 1)
-					break;
-				axis = axis == AXIS_HOR ? AXIS_VERT : AXIS_HOR;
-				todoList = generateTestCases(axis, tile, smi);
-				usedTestPos = 0;
-				continue;
-			}
-			countDone++;
-			if (alreadyDone != null && countDone <= alreadyDone.intValue()) {
-				usedTestPos++; // we already checked this split before
-				continue;
-			}
-			int splitPos = todoList.getInt(usedTestPos++);
-			// create the two parts of the tile
-			boolean ok = false;
-			if (axis == AXIS_HOR) {
-				ok = tile.splitHoriz(splitPos, smi);
-			} else {
-				ok = tile.splitVert(splitPos, smi);
-			}
-			if (!ok)
-				continue;
-
-			Tile[] parts = smi.getParts();
-			if (trimTiles) {
-				parts[0] = parts[0].trim();
-				parts[1] = parts[1].trim();
-			}
-			if (parts[0].getCount() > parts[1].getCount()) {
-				// first try the less populated part
-				Tile help = parts[0];
-				parts[0] = parts[1];
-				parts[1] = help;
-			}
-			Solution[] sols = new Solution[2];
-			int countOK = 0;
-			for (int i = 0; i < 2; i++) {
-				if (i == 0 && alreadyDone != null)
-					continue;
-				// depth first recursive search
-//				long t1 = System.currentTimeMillis();
-				sols[i] = findSolution(depth + 1, parts[i], tile, smi);
-//				long dt = System.currentTimeMillis() - t1;
-//				if (dt > 100 && tile.getCount() < 8 * maxNodes)
-//					System.out.println("took " + dt + " ms to find " + sols[i] + " for "+ parts[i]);
-				if (sols[i] == null) {
-					countBad++;
-//					if (countBad >= searchLimit) {
-//						if (countBad == searchLimit)
-//							System.out.println("giving up at depth " + depth + " with currX = " + currX + " and currY = "+ currY + " at tile " + tile + " bad: " + saveCountBad );
-//						else 
-//							System.out.println(".. " + depth + " with currX = " + currX + " and currY = "+ currY + " at tile " + tile + " bad: " + saveCountBad );
-//					}
-					break;
-				}
-				checkIfGood(parts[i], sols[i]);
-				countOK++;
-			}
-			if (countOK == 2) {
-				Solution sol = sols[0];
-				sol.merge(sols[1]);
-				bestSol = sol;
-				break; // we found a valid split and searched the direct neighbours
-			}
-			if (countBad >= searchLimit) {
-				incomplete.put(tile, countDone - 1);
-				break;
-			}
-		}
-
-		smi.propagateToParent(smiParent, tile, parent);
-
-		if (bestSol == null && countBad < searchLimit && depth > 0 && tile.width * tile.height > 100) {
-			knownBad.add(tile);
-		}
-		return bestSol;
-	}
-
-	private boolean checkSize(Tile tile) {
-		return tile.height <= maxTileHeight && tile.width <= maxTileWidth;
-	}
-
-	/**
 	 * Get a first solution and search for better ones until either a nice solution
 	 * is found or no improvement was found.
 	 * 
@@ -768,148 +602,82 @@ public class SplittableDensityArea {
 		// solution
 		if (startTile.getCount() == 0)
 			return new Solution(maxNodes);
-		searchLimit = startSearchLimit;
 		
 		final long startMinNodes = Math.max(Math.min((long) (0.05 * maxNodes), extraDensityInfo.getNodeCount()), 1);
-		minNodes = startMinNodes;
 		
+		GoodSolutionsCache goodCache = new GoodSolutionsCache(maxNodes);
+		List<Solver> solvers = new ArrayList<>();
+		List<Future<?>> futures = new ArrayList<>();
+		int numAlgos = 2;
+		ExecutorService threadPool = Executors.newFixedThreadPool(numAlgos);
+		
+		for (int i = 0; i < numAlgos; i++) {
+			Solver solver = new Solver(i == 1, goodCache, maxNodes);
+			solver.maxAspectRatio = getStartRatio(startTile);
+			solver.minNodes = startMinNodes;
+			solvers.add(solver);
+			futures.add(threadPool.submit(() -> solver.solve(startTile)));
+		}
+		
+		threadPool.shutdown();
+		
+		while (!threadPool.isTerminated()) {
+			for (int i = 0; i < numAlgos; i++) {
+				if (futures.get(i).isDone()) {
+					Solution sol = solvers.get(i).bestSolution;
+					if (sol.isNice() && (stopNumber == 0
+							|| (sol.getWorstMinNodes() > maxNodes * 0.8 && sol.size() < 1.1 * stopNumber))) {
+						// stop the other solver
+						solvers.forEach(Solver::stop);
+						return sol;
+					}
+				}
+			}
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		solvers.sort((o1,o2) -> o1.bestSolution.compareTo(o2.bestSolution));
+		Solver best = solvers.get(0);
+		if (best.bestSolution.isEmpty()) {
+			int highestCount = extraDensityInfo.getMaxNodesInDensityMapGridElement();
+			// inform user about possible better options?
+			double ratio = (double) highestCount / maxNodes;
+			if (ratio > 4)
+				System.err.printf(
+						"max-nodes value %d is far below highest node count %d in single grid element, consider using a higher resolution.%n",
+						maxNodes, highestCount);
+			else if (ratio > 1)
+				System.err.printf(
+						"max-nodes value %d is below highest node count %d in single grid element, consider using a higher resolution.%n",
+						maxNodes, highestCount);
+			else if (ratio < 0.25)
+				System.err.printf(
+						"max-nodes value %d is far above highest node count %d in single grid element, consider using a lower resolution.%n",
+						maxNodes, highestCount);
+
+
+		}
+		hasEmptyPart = best.hasEmptyPart;
+		printFinishMsg(best.bestSolution, best.searchLimit);
+		return best.bestSolution;
+	}
+
+	private double getStartRatio(Tile startTile) {
 		if (extraDensityInfo.getNodeCount() / maxNodes < 4) {
-			maxAspectRatio = 32;
-		} else {
-			maxAspectRatio = startTile.getAspectRatio();
-			if (maxAspectRatio < 1)
-				maxAspectRatio = 1 / maxAspectRatio;
-			if (maxAspectRatio < NICE_MAX_ASPECT_RATIO)
-				maxAspectRatio = NICE_MAX_ASPECT_RATIO;
-		}
-		goodSolutions = new HashMap<>(GOOD_SOL_INIT_SIZE);
-		goodRatio = 0.5;
-		TileMetaInfo smiStart = new TileMetaInfo(startTile, null, null);
-		if (!ignoreSize && startTile.getCount() < 300 * maxNodes && (checkSize(startTile) || startTile.getCount() < 10 * maxNodes)) {
-			searchAll = true;
-		}
-		boolean algorithmnWasSwitched = false;
-
-		if (!beQuiet)
-			System.out.println("Trying to find nice split for " + startTile);
-		Solution bestSolution = new Solution(maxNodes);
-		long t1 = System.currentTimeMillis();
-		incomplete = new LinkedHashMap<>();
-		resetCaches();
-		boolean clearIncomplete = false;
-		Solution firstSolution = new Solution(maxNodes);
-		for (int numLoops = 0; numLoops < MAX_LOOPS; numLoops++) {
-			if (clearIncomplete)
-				incomplete.clear();
-			clearIncomplete = true;
-			double saveMaxAspectRatio = maxAspectRatio;
-			long saveMinNodes = minNodes;
-			boolean foundBetter = false;
-			Solution solution = null;
-			countBad = 0;
-			if (!beQuiet) {
-				System.out.println("searching for split with min-nodes " + minNodes + ", learned "
-						+ goodSolutions.size() + " good partial solutions");
-			}
-			smiStart.setMinNodes(minNodes);
-			solution = findSolution(0, startTile, startTile, smiStart);
-			if (solution != null) {
-				foundBetter = bestSolution.compareTo(solution) > 0;
-				if (foundBetter) {
-					Solution prevBest = bestSolution;
-					bestSolution = solution;
-					if (bestSolution.compareTo(firstSolution) < 0) {
-						System.out.println("Best solution until now: " + bestSolution.toString() + ", elapsed search time: "
-								+ (System.currentTimeMillis() - t1) / 1000 + " s");
-					}
-					filterGoodSolutions(bestSolution);
-					// change criteria to find a better(nicer) result
-					double factor = 1.10;
-					if (!prevBest.isEmpty() && prevBest.isNice())
-						factor = Math.min(1.30, (double) bestSolution.getWorstMinNodes() / prevBest.getWorstMinNodes());
-					minNodes = Math.max(maxNodes / 3, (long) (bestSolution.getWorstMinNodes() * factor));
-				}
-				if (bestSolution.size() == 1) {
-					if (!beQuiet)
-						System.out.println("This can't be improved.");
-					break;
-				}
-			} else {
-				if (!bestSolution.isEmpty()) {
-					if (minNodes > bestSolution.getWorstMinNodes() + 1) {
-						// reduce minNodes
-						minNodes = (bestSolution.getWorstMinNodes() + minNodes) / 2;
-						if (minNodes < bestSolution.getWorstMinNodes() * 1.001)
-							minNodes = bestSolution.getWorstMinNodes() + 1;
-					}
-				}
-			}
-			maxAspectRatio = Math.max(bestSolution.getWorstAspectRatio() / 2, NICE_MAX_ASPECT_RATIO);
-			maxAspectRatio = Math.min(32, maxAspectRatio);
-			if (!bestSolution.isEmpty() && bestSolution.getWorstMinNodes() > VERY_NICE_FILL_RATIO * maxNodes)
-				break;
-			if (minNodes > VERY_NICE_FILL_RATIO * maxNodes)
-				minNodes = (long) (VERY_NICE_FILL_RATIO * maxNodes);
-			if (saveMaxAspectRatio == maxAspectRatio && saveMinNodes == minNodes) {
-				// no improvement found
-				if (bestSolution.isEmpty() || bestSolution.getWorstMinNodes() < 0.5 * maxNodes) {
-					if (countBad > searchLimit && searchLimit < 5_000_000) {
-						searchLimit *= 2;
-						clearIncomplete = false;
-						resetCaches();
-						System.out.println("No good solution found, duplicated search-limit to " + searchLimit);
-						continue;
-					}
-					if (bestSolution.isEmpty() && minNodes > 1) {
-						minNodes = 1;
-						resetCaches();
-						searchLimit = startSearchLimit;
-						// sanity check
-						System.out.println("No good solution found, trying to find one accepting anything");
-						int highestCount = extraDensityInfo.getMaxNodesInDensityMapGridElement();
-						// inform user about possible better options?
-						double ratio = (double) highestCount / maxNodes;
-						if (ratio > 4)
-							System.err.printf(
-									"max-nodes value %d is far below highest node count %d in single grid element, consider using a higher resolution.%n",
-									maxNodes, highestCount);
-						else if (ratio > 1)
-							System.err.printf(
-									"max-nodes value %d is below highest node count %d in single grid element, consider using a higher resolution.%n",
-									maxNodes, highestCount);
-						else if (ratio < 0.25)
-							System.err.printf(
-									"max-nodes value %d is far above highest node count %d in single grid element, consider using a lower resolution.%n",
-									maxNodes, highestCount);
-
-						continue;
-					}
-					if (!algorithmnWasSwitched) {
-						System.out.println("Still no good solution found, trying alternative algorithm");
-						firstSolution = bestSolution;
-						bestSolution = new Solution(maxNodes);
-						minNodes = startMinNodes;
-						searchLimit = startSearchLimit;
-						searchAll = !searchAll;
-						algorithmnWasSwitched = true;
-						continue;
-					}
-				}
-				break;
-			}
-		}
-		if (bestSolution.compareTo(firstSolution) > 0)
-			bestSolution = firstSolution;
-		if (!beQuiet)
-			printFinishMsg(bestSolution);
-		return bestSolution;
+			return 32;
+		} 
+		double startMaxAspectRatio = startTile.getAspectRatio();
+		if (startMaxAspectRatio < 1)
+			startMaxAspectRatio = 1 / startMaxAspectRatio ;
+		if (startMaxAspectRatio < NICE_MAX_ASPECT_RATIO)
+			startMaxAspectRatio = NICE_MAX_ASPECT_RATIO;
+		return startMaxAspectRatio;
 	}
 
-	private void resetCaches() {
-		knownBad = new HashSet<>(50_000);
-	}
-
-	private void printFinishMsg(Solution solution) {
+	private void printFinishMsg(Solution solution, int searchLimit) {
 		if (!beQuiet) {
 			if (!solution.isEmpty()) {
 				if (solution.getWorstMinNodes() > VERY_NICE_FILL_RATIO * maxNodes && solution.isNice())
@@ -923,6 +691,12 @@ public class SplittableDensityArea {
 		}
 	}
 
+	private static void printFinalSplitMsg(Solution solution) {
+		System.out.println("Final solution: " + solution.toString());
+		if (solution.isNice())
+			System.out.println("This seems to be nice.");
+	}
+
 	/**
 	 * Convert the list of Tile instances of a solution to Area instances, report
 	 * some statistics.
@@ -934,8 +708,8 @@ public class SplittableDensityArea {
 	 */
 	private List<Area> getAreas(Solution sol, java.awt.geom.Area polygonArea) {
 		List<Area> result = new ArrayList<>();
-		int minLat = getAllDensities().getBounds().getMinLat();
-		int minLon = getAllDensities().getBounds().getMinLong();
+		int minLat = allDensities.getBounds().getMinLat();
+		int minLon = allDensities.getBounds().getMinLong();
 
 		if (polygonArea != null) {
 			System.out.println("Trying to cut the areas so that they fit into the polygon ...");
@@ -982,82 +756,399 @@ public class SplittableDensityArea {
 
 	}
 
-	/**
-	 * Generate a list of split positions. This is essential: The shorter the list,
-	 * the faster the search, so we try to put only good candidates into the list.
-	 * 
-	 * @param axis horizontal or vertical
-	 * @param tile the tile
-	 * @param smi  the meta info
-	 * @return list of split positions
-	 */
-	private IntArrayList generateTestCases(int axis, Tile tile, TileMetaInfo smi) {
-		if (searchAll) {
-			return (axis == AXIS_HOR) ? tile.genXTests(smi) : tile.genYTests(smi);
+	private class Solver {
+		final GoodSolutionsCache goodCache;
+		final long myMaxNodes;
+		boolean hasEmptyPart;
+		double maxAspectRatio;
+		int countBad;
+		long minNodes;
+		private int searchLimit;
+		private LinkedHashMap<Tile, Integer> incomplete;
+		Set<Tile> knownBad = new HashSet<>(50_000);
+
+		private boolean searchAll;
+		private Solution bestSolution;
+		private boolean stopped;
+
+		public Solver(boolean searchAll, GoodSolutionsCache goodCache, long maxNodes) {
+			this.searchAll = searchAll;
+			this.goodCache = goodCache;
+			this.myMaxNodes = maxNodes;
+			incomplete = new LinkedHashMap<>();
+			bestSolution = new Solution(myMaxNodes);
 		}
-		double ratio = tile.getAspectRatio();
-		IntArrayList tests = new IntArrayList();
-		if (ratio < 1.0 / 32 || ratio > 32 || ratio < 1.0 / 16 && axis == AXIS_HOR || ratio > 16 && axis == AXIS_VERT)
-			return tests;
-		int start = (axis == AXIS_HOR) ? tile.findValidStartX(smi) : tile.findValidStartY(smi);
-		int end = (axis == AXIS_HOR) ? tile.findValidEndX(smi) : tile.findValidEndY(smi);
-		int range = end - start;
-		if (range < 0) {
-			// can't split tile without having one part that has too few nodes
-			return tests;
-		}
-		if (range > 1024 && (axis == AXIS_HOR && tile.width >= maxTileWidth
-				|| axis == AXIS_VERT && tile.height >= maxTileHeight)) {
-			// large tile, just split at a few valid positions
-			for (int i = 5; i > 1; --i)
-				tests.add(start + range / i);
-		} else if (tile.getCount() < maxNodes * 4 && range > 256) {
-			// large tile with rather few nodes, allow more tests
-			int step = (range) / 20;
-			for (int pos = start; pos <= end; pos += step)
-				tests.add(pos);
-		} else if (tile.getCount() > maxNodes * 4) {
-			int step = range / 7; // 7 turned out to be a good value here
-			if (step < 1)
-				step = 1;
-			for (int pos = start; pos <= end; pos += step)
-				tests.add(pos);
-		} else {
-			// this will be one of the last splits
-			long nMax = tile.getCount() / minNodes;
-			if (nMax * minNodes < tile.getCount())
-				nMax++;
-			long nMin = tile.getCount() / maxNodes;
-			if (nMin * maxNodes < tile.getCount())
-				nMin++;
-			if (nMin > 2 && nMin * maxNodes - minNodes < tile.getCount() && ratio > 0.125 && ratio < 8) {
-				// count is near (but below) a multiple of max-nodes, we have to test all
-				// candidates
-				// to make sure that we don't miss a good split
-				return (axis == AXIS_HOR) ? tile.genXTests(smi) : tile.genYTests(smi);
+
+		/**
+		 * Try to split the tile into nice parts recursively.
+		 * 
+		 * @param depth the recursion depth
+		 * @param tile  the tile to be split
+		 * @param smiParent meta info for parent tile
+		 * @return a solution instance or null
+		 */
+		private Solution findSolution(int depth, final Tile tile, Tile parent, TileMetaInfo smiParent) {
+			if (stopped)
+				return null;
+			boolean addAndReturn = false;
+			if (tile.getCount() == 0) {
+				if (!allowEmptyPart) {
+					hasEmptyPart = true;
+					return null;
+				}
+				if (tile.width * tile.height <= 4)
+					return null;
+				return new Solution(myMaxNodes); // allow empty part of the world
+			} else if (tile.getCount() > myMaxNodes && tile.width == 1 && tile.height == 1) {
+				addAndReturn = true; // can't split further
+			} else if (tile.getCount() < minNodes && depth == 0) {
+				addAndReturn = true; // nothing to do
+			} else if (tile.getCount() < minNodes) {
+				return null;
+			} else if (tile.getCount() <= myMaxNodes) {
+				double ratio = tile.getAspectRatio();
+				if (ratio < 1.0)
+					ratio = 1.0 / ratio;
+				if (ratio <= maxAspectRatio) {
+					if (ignoreSize || myMaxNodes >= LARGE_MAX_NODES || checkSize(tile))
+						addAndReturn = true;
+				}
+			} else if (tile.width < 2 && tile.height < 2) {
+				return null;
 			}
-			if (nMax == 2 || nMin == 2) {
-				tests.add((axis == AXIS_HOR) ? tile.findHorizontalMiddle(smi) : tile.findVerticalMiddle(smi));
-				int pos = (axis == AXIS_HOR) ? tile.findFirstXHigher(smi, minNodes) + 1
-						: tile.findFirstYHigher(smi, minNodes) + 1;
-				if (tests.get(0) != pos)
-					tests.add(pos);
-				pos = (axis == AXIS_HOR) ? tile.findFirstXHigher(smi, maxNodes) : tile.findFirstYHigher(smi, maxNodes);
-				if (!tests.contains(pos))
-					tests.add(pos);
-			} else {
-				if (range == 0) {
-					tests.add(start);
-				} else {
-					if (nMax != 3)
-						tests.add((axis == AXIS_HOR) ? tile.findHorizontalMiddle(smi) : tile.findVerticalMiddle(smi));
-					if (!tests.contains(start))
-						tests.add(start);
-					if (!tests.contains(end))
-						tests.add(end);
+			if (addAndReturn) {
+				double outsidePolygonRatio = tile.calcOutsidePolygonRatio();
+				if (outsidePolygonRatio > MAX_OUTSIDE_RATIO) {
+					return null;
+				}
+				Solution solution = new Solution(myMaxNodes);
+				solution.add(tile); // can't split further
+				return solution;
+			}
+			if (tile.getCount() < minNodes * 2) {
+				return null;
+			}
+			Solution cached = searchGoodSolutions(tile);
+			if (cached != null) {
+				return cached;
+			}
+			// we have to split the tile
+			Integer alreadyDone = null;
+			if (countBad == 0 && incomplete.size() > 0) {
+				alreadyDone = incomplete.remove(tile);
+				if (alreadyDone == null)
+					incomplete.clear(); // rest is not useful
+			}
+
+			if (alreadyDone == null && depth > 0 && tile.width * tile.height > 100) {
+				if (knownBad.contains(tile))
+					return null;
+			}
+
+			// copy the existing density info from parent
+			// typically, at least one half can be re-used
+			TileMetaInfo smi = new TileMetaInfo(tile, parent, smiParent);
+
+			// we have to split the tile
+			TestGenerator generator = new TestGenerator(searchAll, tile, smi, minNodes);
+			int countDone = 0;
+			Solution bestSol = null;
+
+			while (generator.hasNext()) {
+				int splitPos = generator.next();
+				countDone++;
+				if (alreadyDone != null && countDone < alreadyDone.intValue()) {
+					long dd = 4;
+					continue;
+				}
+				// create the two parts of the tile
+				int axis = generator.getAxis();
+				boolean ok = axis == AXIS_HOR ? tile.splitHoriz(splitPos, smi) : tile.splitVert(splitPos, smi);
+				if (!ok)
+					continue;
+
+				Tile[] parts = smi.getParts();
+				if (trimTiles) {
+					parts[0] = parts[0].trim();
+					parts[1] = parts[1].trim();
+				}
+				if (parts[0].getCount() > parts[1].getCount()) {
+					// first try the less populated part
+					Tile help = parts[0];
+					parts[0] = parts[1];
+					parts[1] = help;
+				}
+				Solution[] sols = new Solution[2];
+				int countOK = 0;
+				for (int i = 0; i < 2; i++) {
+					if (i == 0 && alreadyDone != null)
+						continue;
+					// depth first recursive search
+					sols[i] = findSolution(depth + 1, parts[i], tile, smi);
+					if (sols[i] == null) {
+						countBad++;
+						break;
+					}
+					goodCache.checkIfGood(parts[i], sols[i]);
+					countOK++;
+				}
+				if (countOK == 2) {
+					Solution sol = sols[0];
+					sol.merge(sols[1]);
+					bestSol = sol;
+					break; // we found a valid split
+				}
+				if (countBad >= searchLimit) {
+					incomplete.put(tile, countDone - 1);
+					break;
+				}
+
+			}
+
+			smi.propagateToParent(smiParent, tile, parent);
+
+			if (bestSol == null && countBad < searchLimit && depth > 0 && tile.width * tile.height > 100) {
+				knownBad.add(tile);
+			}
+			return bestSol;
+		}
+
+		private boolean checkSize(Tile tile) {
+			return tile.height <= maxTileHeight && tile.width <= maxTileWidth;
+		}
+
+		/**
+		 * Search a solution for the given tile in the map of partial good solutions
+		 * 
+		 * @param tile the tile to split
+		 * @return a copy of the best known solution or null
+		 */
+		private Solution searchGoodSolutions(Tile tile) {
+			Solution sol = goodCache.get(tile);
+			if (sol != null) {
+				if (sol.getWorstMinNodes() < minNodes)
+					return null;
+				sol = sol.copy();
+			}
+			return sol;
+		}
+		
+		public void solve(Tile startTile) {
+			long t1 = System.currentTimeMillis();
+			knownBad.clear();
+			bestSolution = new Solution(myMaxNodes);
+			searchLimit = startSearchLimit;
+			TileMetaInfo smiStart = new TileMetaInfo(startTile, null, null);
+			final String algoName = "Algorithm " + (searchAll ? "FULL" : "SOME") + ": ";
+			final long veryNiceMinNodes = (long) (VERY_NICE_FILL_RATIO * myMaxNodes);
+
+			for (int numLoops = 0; numLoops < MAX_LOOPS && !stopped; numLoops++) {
+				// store values to be able to detect progress 
+				double saveMaxAspectRatio = maxAspectRatio;
+				long saveMinNodes = minNodes;
+				
+				Solution solution = null;
+				countBad = 0;
+				if (!beQuiet) {
+					System.out.println(algoName + "searching for split with min-nodes " + minNodes + ", learned "
+							+ goodCache.size() + " good partial solutions");
+				}
+				smiStart.setMinNodes(minNodes);
+				solution = findSolution(0, startTile, startTile, smiStart);
+				if (stopped)
+					return;
+				if (solution != null) {
+					boolean foundBetter = bestSolution.compareTo(solution) > 0; 
+					if (foundBetter) {
+						if (solution.size() < stopNumber) {
+							long dd = 4;
+						}
+						Solution prevBest = bestSolution;
+						bestSolution = solution;
+						
+						System.out.println(algoName + "Best solution until now: " + bestSolution.toString()
+								+ ", elapsed search time: " + (System.currentTimeMillis() - t1) / 1000 + " s");
+						goodCache.filterGoodSolutions(bestSolution);
+						// change criteria to find a better(nicer) result
+						double factor = 1.10;
+						if (!prevBest.isEmpty() && prevBest.isNice())
+							factor = Math.min(1.30, (double) bestSolution.getWorstMinNodes() / prevBest.getWorstMinNodes());
+						minNodes = Math.max(myMaxNodes / 3, (long) (bestSolution.getWorstMinNodes() * factor));
+					}
+					if (bestSolution.size() == 1) {
+						if (!beQuiet)
+							System.out.println(algoName + "This can't be improved.");
+						return;
+					}
+				} else if (!bestSolution.isEmpty() && minNodes > bestSolution.getWorstMinNodes() + 1) {
+					// reduce minNodes
+					minNodes = (bestSolution.getWorstMinNodes() + minNodes) / 2;
+					if (minNodes < bestSolution.getWorstMinNodes() * 1.001)
+						minNodes = bestSolution.getWorstMinNodes() + 1;
+				}
+				if (!bestSolution.isEmpty() ) {
+					if (stopNumber * 0.95 > bestSolution.getTiles().size())
+						return;
+					if (bestSolution.getWorstMinNodes() > veryNiceMinNodes)
+						return;
+				}
+				if (stopNumber == 0 && minNodes > veryNiceMinNodes)
+					minNodes = veryNiceMinNodes;
+				if (solution != null && solution.size() < stopNumber) {
+					minNodes = (bestSolution.getWorstMinNodes() + saveMinNodes) / 2;
+				}
+				
+				boolean clearIncomplete = true;
+				maxAspectRatio = Math.min(32, Math.max(bestSolution.getWorstAspectRatio() / 2, NICE_MAX_ASPECT_RATIO));
+				if (saveMaxAspectRatio == maxAspectRatio && saveMinNodes == minNodes) {
+					// no improvement found
+					boolean tryAgain = false;
+					if (bestSolution.isEmpty() || bestSolution.getWorstMinNodes() < 0.5 * myMaxNodes) {
+						// try to improve by adjusting threshold values
+						if (countBad > searchLimit && searchLimit < 5_000_000) {
+							searchLimit *= 2;
+							clearIncomplete = false;
+							knownBad.clear();
+							System.out.println(algoName + "No good solution found, duplicated search-limit to " + searchLimit);
+							tryAgain = true;
+						} else if (bestSolution.isEmpty() && minNodes > 1) {
+							minNodes = 1;
+							knownBad.clear();
+							searchLimit = startSearchLimit;
+							// sanity check
+							System.out.println(algoName + "No good solution found, trying to find one accepting anything");
+							tryAgain = true;
+						}
+					} 
+					if (!tryAgain) {
+						System.out.println(algoName + "search is finished");
+						return;
+					}
+				} 
+				if (clearIncomplete) {
+					incomplete.clear();
 				}
 			}
 		}
-		return tests;
+
+		void stop() {
+			stopped = true;
+		}
+		
+	}
+	
+	private class TestGenerator {
+		final boolean searchAll;
+		int axis;
+		final Tile tile;
+		final TileMetaInfo smi;
+		final int start;
+		final int end;
+		int countAxis;
+		int usedTestPos;
+		private IntArrayList todoList;
+		private final long minNodes;
+		
+
+		public TestGenerator(boolean searchAll, Tile tile, TileMetaInfo smi, long minNodes) {
+			super();
+			this.searchAll = searchAll;
+			this.tile = tile;
+			this.smi = smi;
+			this.minNodes = minNodes;
+
+			axis = (tile.getAspectRatio() >= 1.0) ? AXIS_HOR : AXIS_VERT;
+			start = (axis == AXIS_HOR) ? tile.findValidStartX(smi) : tile.findValidStartY(smi);
+			end = (axis == AXIS_HOR) ? tile.findValidEndX(smi) : tile.findValidEndY(smi);
+			todoList = generateTestCases();
+		}
+
+		boolean hasNext() {
+			if (usedTestPos >= todoList.size()) {
+				countAxis++;
+				if (countAxis > 1)
+					return false;
+				axis = axis == AXIS_HOR ? AXIS_VERT : AXIS_HOR;
+				todoList = generateTestCases();
+				usedTestPos = 0;
+			}
+			return usedTestPos < todoList.size();
+		}
+
+		int next() {
+			return todoList.get(usedTestPos++);
+		}
+
+		public int getAxis() {
+			return axis;
+		}
+		
+		IntArrayList generateTestCases() {
+			if (searchAll) {
+				return Tile.genTests(start, end);
+			}
+			double ratio = tile.getAspectRatio();
+			IntArrayList tests = new IntArrayList();
+			if (ratio < 1.0 / 32 || ratio > 32 || ratio < 1.0 / 16 && axis == AXIS_HOR || ratio > 16 && axis == AXIS_VERT)
+				return tests;
+			int range = end - start;
+			if (range < 0) {
+				// can't split tile without having one part that has too few nodes
+				return tests;
+			}
+			if (range > 1024 && (axis == AXIS_HOR && tile.width >= maxTileWidth
+					|| axis == AXIS_VERT && tile.height >= maxTileHeight)) {
+				// large tile, just split at a few valid positions
+				for (int i = 5; i > 1; --i)
+					tests.add(start + range / i);
+			} else if (tile.getCount() < maxNodes * 4 && range > 256) {
+				// large tile with rather few nodes, allow more tests
+				int step = (range) / 20;
+				for (int pos = start; pos <= end; pos += step)
+					tests.add(pos);
+			} else if (tile.getCount() > maxNodes * 4) {
+				int step = range / 7; // 7 turned out to be a good value here
+				if (step < 1)
+					step = 1;
+				for (int pos = start; pos <= end; pos += step)
+					tests.add(pos);
+			} else {
+				// this will be one of the last splits
+				long nMax = tile.getCount() / minNodes;
+				if (nMax * minNodes < tile.getCount())
+					nMax++;
+				long nMin = tile.getCount() / maxNodes;
+				if (nMin * maxNodes < tile.getCount())
+					nMin++;
+				if (nMin > 2 && nMin * maxNodes - minNodes < tile.getCount() && ratio > 0.125 && ratio < 8) {
+					// count is near (but below) a multiple of max-nodes, we have to test all
+					// candidates
+					// to make sure that we don't miss a good split
+					return (axis == AXIS_HOR) ? tile.genXTests(smi) : tile.genYTests(smi);
+				}
+				if (nMax == 2 || nMin == 2) {
+					tests.add((axis == AXIS_HOR) ? tile.findHorizontalMiddle(smi) : tile.findVerticalMiddle(smi));
+					int pos = (axis == AXIS_HOR) ? tile.findFirstXHigher(smi, minNodes) + 1
+							: tile.findFirstYHigher(smi, minNodes) + 1;
+					if (tests.get(0) != pos)
+						tests.add(pos);
+					pos = (axis == AXIS_HOR) ? tile.findFirstXHigher(smi, maxNodes) : tile.findFirstYHigher(smi, maxNodes);
+					if (!tests.contains(pos))
+						tests.add(pos);
+				} else {
+					if (range == 0) {
+						tests.add(start);
+					} else {
+						if (nMax != 3)
+							tests.add((axis == AXIS_HOR) ? tile.findHorizontalMiddle(smi) : tile.findVerticalMiddle(smi));
+						if (!tests.contains(start))
+							tests.add(start);
+						if (!tests.contains(end))
+							tests.add(end);
+					}
+				}
+			}
+			return tests;
+		}
 	}
 }
