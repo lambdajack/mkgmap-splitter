@@ -22,9 +22,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -51,7 +49,6 @@ public class SplittableDensityArea {
 	public static final double NICE_MAX_ASPECT_RATIO = 4;
 	private static final double VERY_NICE_FILL_RATIO = 0.93;
 	private static final long LARGE_MAX_NODES = 10_000_000;
-	private static final int GOOD_SOL_INIT_SIZE = 1_000_000;
 	private static final double MAX_OUTSIDE_RATIO = 0.5; 
 	
 	private final int startSearchLimit;
@@ -352,52 +349,6 @@ public class SplittableDensityArea {
 
 	}
 
-	private static class GoodSolutionsCache {
-		private final long maxNodes;
-		private final Map<Tile, Solution> goodSolutions = new ConcurrentHashMap<>(GOOD_SOL_INIT_SIZE);
-		private double goodRatio = 0.5;
-		
-		public GoodSolutionsCache(long maxNodes) {
-			this.maxNodes = maxNodes;
-		}
-
-		/**
-		 * Check if the solution should be stored in the map of partial good solutions
-		 * 
-		 * @param tile the tile for which the solution was found
-		 * @param sol  the solution for the tile
-		 */
-		private void checkIfGood(Tile tile, Solution sol) {
-			if (sol.isNice() && sol.getTiles().size() >= 2 && sol.getWorstMinNodes() > (goodRatio * maxNodes)) {
-				// add new or replace worse solution
-				goodSolutions.compute(tile,
-						(k, v) -> v == null || v.getWorstMinNodes() < sol.getWorstMinNodes() ? sol.copy() : v);
-			}
-		}
-
-		/**
-		 * Remove entries from the map of partial good solutions which cannot help to
-		 * improve the best solution.
-		 * 
-		 * @param best the best known solution
-		 */
-		private void filterGoodSolutions(Solution best) {
-			if (best == null || best.isEmpty())
-				return;
-			final long badMinNodes = best.getWorstMinNodes();
-			goodSolutions.entrySet().removeIf(entry -> entry.getValue().getWorstMinNodes() <= badMinNodes);
-			goodRatio = Math.max(0.5, (double) badMinNodes / maxNodes);
-		}
-
-		public Solution get(Tile tile) {
-			return goodSolutions.get(tile);
-		}
-
-		public int size() {
-			return goodSolutions.size();
-		}
-	}
-
 	/**
 	 * Try to find empty areas. This will fail if the empty area is enclosed by a
 	 * non-empty area.
@@ -607,14 +558,13 @@ public class SplittableDensityArea {
 		
 		final long startMinNodes = Math.max(Math.min((long) (0.05 * maxNodes), extraDensityInfo.getNodeCount()), 1);
 		
-		GoodSolutionsCache goodCache = new GoodSolutionsCache(maxNodes);
 		List<Solver> solvers = new ArrayList<>();
 		List<Future<?>> futures = new ArrayList<>();
 		int numAlgos = 2;
 		ExecutorService threadPool = Executors.newFixedThreadPool(numAlgos);
 		
 		for (int i = 0; i < numAlgos; i++) {
-			Solver solver = new Solver(i == 1, goodCache, maxNodes);
+			Solver solver = new Solver(i == 1, maxNodes);
 			solver.maxAspectRatio = getStartRatio(startTile);
 			solver.minNodes = startMinNodes;
 			solvers.add(solver);
@@ -780,7 +730,6 @@ public class SplittableDensityArea {
 	}
 
 	private class Solver {
-		final GoodSolutionsCache goodCache;
 		final long myMaxNodes;
 		boolean hasEmptyPart;
 		double maxAspectRatio;
@@ -794,9 +743,8 @@ public class SplittableDensityArea {
 		private Solution bestSolution;
 		private boolean stopped;
 
-		public Solver(boolean searchAll, GoodSolutionsCache goodCache, long maxNodes) {
+		public Solver(boolean searchAll, long maxNodes) {
 			this.searchAll = searchAll;
-			this.goodCache = goodCache;
 			this.myMaxNodes = maxNodes;
 			incomplete = new LinkedHashMap<>();
 			bestSolution = new Solution(myMaxNodes);
@@ -850,10 +798,6 @@ public class SplittableDensityArea {
 			}
 			if (tile.getCount() < minNodes * 2) {
 				return null;
-			}
-			Solution cached = searchGoodSolutions(tile);
-			if (cached != null) {
-				return cached;
 			}
 			// we have to split the tile
 			Integer alreadyDone = null;
@@ -911,7 +855,6 @@ public class SplittableDensityArea {
 						countBad++;
 						break;
 					}
-					goodCache.checkIfGood(parts[i], sols[i]);
 					countOK++;
 				}
 				if (countOK == 2) {
@@ -939,22 +882,6 @@ public class SplittableDensityArea {
 			return tile.height <= maxTileHeight && tile.width <= maxTileWidth;
 		}
 
-		/**
-		 * Search a solution for the given tile in the map of partial good solutions
-		 * 
-		 * @param tile the tile to split
-		 * @return a copy of the best known solution or null
-		 */
-		private Solution searchGoodSolutions(Tile tile) {
-			Solution sol = goodCache.get(tile);
-			if (sol != null) {
-				if (sol.getWorstMinNodes() < minNodes)
-					return null;
-				sol = sol.copy();
-			}
-			return sol;
-		}
-		
 		public void solve(Tile startTile) {
 			long t1 = System.currentTimeMillis();
 			knownBad.clear();
@@ -975,8 +902,7 @@ public class SplittableDensityArea {
 				Solution solution = null;
 				countBad = 0;
 				if (!beQuiet) {
-					System.out.println(algoName + "searching for split with min-nodes " + minNodes + ", learned "
-							+ goodCache.size() + " good partial solutions");
+					System.out.println(algoName + "searching for split with min-nodes " + minNodes);
 				}
 				smiStart.setMinNodes(minNodes);
 				solution = findSolution(0, startTile, startTile, smiStart);
@@ -995,7 +921,6 @@ public class SplittableDensityArea {
 						bestSolution = solution;
 						System.out.println(algoName + "Best solution until now: " + bestSolution.toString()
 						+ ", elapsed search time: " + (System.currentTimeMillis() - t1) / 1000 + " s");
-						goodCache.filterGoodSolutions(bestSolution);
 						// change criteria to find a better(nicer) result
 						double factor = 1.10;
 						if (!prevBest.isEmpty() && prevBest.isNice())
