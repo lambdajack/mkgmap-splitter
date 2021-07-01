@@ -19,10 +19,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -79,7 +79,6 @@ public class SplittableDensityArea {
 		allDensities = densities;
 		maxTileHeight = Utils.toMapUnit(MAX_LAT_DEGREES) / (1 << shift);
 		maxTileWidth = Utils.toMapUnit(MAX_LON_DEGREES) / (1 << shift);
-		
 	}
 
 	public DensityMap getAllDensities() {
@@ -738,13 +737,12 @@ public class SplittableDensityArea {
 		long minNodes;
 		private int searchLimit;
 		private LinkedHashMap<Tile, Integer> incomplete;
-		Set<Tile> knownBad = new HashSet<>(50_000);
+		Map<Tile, Long> knownBad = new HashMap<>(50_000);
 		final int maxSearchLimit = 5_000_000;
 
 		private boolean searchAll;
 		private Solution bestSolution;
 		private boolean stopped;
-		private int countTested;
 
 		public Solver(boolean searchAll, long maxNodes) {
 			this.searchAll = searchAll;
@@ -764,7 +762,6 @@ public class SplittableDensityArea {
 		private Solution findSolution(int depth, final Tile tile, Tile parent, TileMetaInfo smiParent) {
 			if (stopped)
 				return null;
-			countTested++;
 			boolean addAndReturn = false;
 			if (tile.getCount() == 0) {
 				if (!allowEmptyPart) {
@@ -812,7 +809,8 @@ public class SplittableDensityArea {
 			}
 
 			if (alreadyDone == null && depth > 0 && tile.width * tile.height > MIN_TILE_AREA_BAD_CACHE) {
-				if (knownBad.contains(tile))
+				Long x = knownBad.get(tile);
+				if (x != null && x <= minNodes)
 					return null;
 			}
 
@@ -877,7 +875,9 @@ public class SplittableDensityArea {
 			smi.propagateToParent(smiParent, tile, parent);
 
 			if (bestSol == null && countBad < searchLimit && depth > 0 && tile.width * tile.height > MIN_TILE_AREA_BAD_CACHE) {
-				knownBad.add(tile);
+				Long x = knownBad.get(tile);
+				if (x == null || x > minNodes)
+					knownBad.put(tile, minNodes);
 			}
 			return bestSol;
 		}
@@ -890,7 +890,7 @@ public class SplittableDensityArea {
 			long t1 = System.currentTimeMillis();
 			knownBad.clear();
 			bestSolution = new Solution(myMaxNodes);
-			searchLimit = startSearchLimit;
+			searchLimit = searchAll? startSearchLimit : maxSearchLimit;
 			
 			TileMetaInfo smiStart = new TileMetaInfo(startTile, null, null);
 			final String algoName = "Algorithm " + (searchAll ? "FULL" : "SOME") + ": ";
@@ -910,11 +910,9 @@ public class SplittableDensityArea {
 					System.out.println(algoName + "searching for split with min-nodes " + minNodes);
 				}
 				smiStart.setMinNodes(minNodes);
-				countTested = 0;
 				solution = findSolution(0, startTile, startTile, smiStart);
 				if (stopped)
 					return;
-				System.out.println(algoName + "Tested " + countTested + " splits, found " + (solution==null ? "no solution" : solution));
 				if (solution != null) {
 					if (solution.size() < stopNumber) {
 						minNodes = (bestSolution.getWorstMinNodes() + solution.getWorstMinNodes()) / 2;
@@ -962,6 +960,7 @@ public class SplittableDensityArea {
 						// try to improve by adjusting threshold values
 						if (countBad > searchLimit && searchLimit < maxSearchLimit) {
 							searchLimit *= 2;
+							knownBad.clear();
 							clearIncomplete = false;
 							System.out.println(algoName + "No good solution found, duplicated search-limit to " + searchLimit);
 							tryAgain = true;
@@ -978,10 +977,6 @@ public class SplittableDensityArea {
 						return;
 					}
 				} 
-				if (minNodes < saveMinNodes) {
-					// the cached bad tiles can't be used
-					knownBad.clear();
-				}
 			}
 		}
 
