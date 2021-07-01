@@ -15,6 +15,8 @@ package uk.me.parabola.splitter.solver;
 
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -621,15 +623,36 @@ public class SplittableDensityArea {
 		
 		threadPool.shutdown();
 		
+		Instant t1 = null;
+		final double n75 = 0.75 * maxNodes;
+		final double n85 = 0.85 * maxNodes;
 		while (!threadPool.isTerminated()) {
 			for (int i = 0; i < numAlgos; i++) {
 				if (futures.get(i).isDone()) {
 					Solution sol = solvers.get(i).bestSolution;
-					if (sol.isNice() && (stopNumber == 0
-							|| (sol.getWorstMinNodes() > maxNodes * 0.8 && sol.size() < 1.1 * stopNumber))) {
-						// stop the other solver
-						solvers.forEach(Solver::stop);
-						return sol;
+					if (sol.isNice()) {
+						if (t1 == null)
+							t1 = Instant.now();
+						long dt = Duration.between(t1, Instant.now()).getSeconds();
+						boolean stop = false;
+						if (sol.getWorstMinNodes() >=n85) {
+							stop = true; // all tiles have at least 85% of max-nodes
+						} else {
+							int num75 = 0;
+							for (Tile tile : sol.getTiles()) {
+								if (tile.getCount() < n75)
+									num75++;
+							}
+							double below75 = 100.0 * num75 / sol.size();
+							if (below75 > 5 && dt > 30) {
+								// +5 percent of tiles are less the 75 percent but we waited +30 seconds
+								stop = true;
+							}
+						}
+						if (stop) {
+							// stop the other solver
+							solvers.forEach(Solver::stop);
+						}
 					}
 				}
 			}
