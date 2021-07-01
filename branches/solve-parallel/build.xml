@@ -216,6 +216,9 @@
     <javac srcdir="${src}" destdir="${build.classes}" debug="yes" includeantruntime="false">
       <include name="**/*.java"/>
       <classpath refid="classpath"/>
+      <compilerarg value="-Xlint:all"/>
+      <compilerarg value="-Xlint:-serial"/>
+      <compilerarg value="-Xlint:-path"/>
     </javac>
   </target>
 
@@ -223,6 +226,9 @@
     <javac srcdir="${test}" destdir="${build.test-classes}" debug="yes" includeantruntime="false">
       <include name="**/*.java"/>
       <classpath refid="test.classpath"/>
+      <compilerarg value="-Xlint:all"/>
+      <compilerarg value="-Xlint:-serial"/>
+      <compilerarg value="-Xlint:-path"/>
     </javac>
   </target>
 
