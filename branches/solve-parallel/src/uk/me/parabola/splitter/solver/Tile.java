@@ -93,18 +93,6 @@ import java.awt.Rectangle;
 			return (getCount() == calcCount()); 
 		}
 		
-		public IntArrayList genXTests(TileMetaInfo smi) {
-			int start = this.findValidStartX(smi);
-			int end = this.findValidEndX(smi);
-			return genTests(start, end);
-		}
-
-		public IntArrayList genYTests(TileMetaInfo smi) {
-			int start = this.findValidStartY(smi);
-			int end = this.findValidEndY(smi);
-			return genTests(start, end);
-		}
-		
 		public static IntArrayList genTests(int start, int end) {
 			if (end-start < 0)
 				return new IntArrayList(1);
