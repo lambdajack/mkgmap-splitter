@@ -54,10 +54,9 @@ import java.awt.Rectangle;
 		 */
 		public Tile(EnhancedDensityMap densityInfo, Rectangle r) {
 			super(r);
-			if (r.x < 0 || r.y < 0
-				|| r.x + r.width > densityInfo.getDensityMap().getWidth()
-				|| r.y + r.height > densityInfo.getDensityMap().getHeight())
-			throw new IllegalArgumentException("Rectangle doesn't fit into density map");
+			if (r.x < 0 || r.y < 0 || r.x + r.width > densityInfo.getDensityMap().getWidth()
+					|| r.y + r.height > densityInfo.getDensityMap().getHeight())
+				throw new IllegalArgumentException("Rectangle doesn't fit into density map");
 			
 			this.densityInfo = densityInfo;
 			count = calcCount();
@@ -562,31 +561,31 @@ import java.awt.Rectangle;
 		}
 
 		/**
-		 * Count the number of grid elements which are outside of the polygon area,
-		 * divide it by the total number of grid elements covered by this tile to
-		 * get a value between 0 and 1 (including).
-		 * @return
+		 * 
+		 * Check if enough grid elements are inside the polygon.
+		 * @param maxOutsideRatio the wanted ratio 
+		 * @return true if the ratio inside/outside is greater than the given value 
 		 */
-		public double calcOutsidePolygonRatio (){
+		public boolean outsideRatioIsOK(final double maxOutsideRatio) {
 			if (densityInfo.getPolygonArea() == null)
-				return 0;
+				return true;
 			Rectangle realBBox = getRealBBox();
-//			if (densityInfo.getPolygonArea().contains(realBBox) )
-//				return 0;
 			// check special case: tile may contain the polygon
 			Rectangle polyBBox = densityInfo.getPolygonArea().getBounds();
-			if (realBBox.contains(polyBBox)){
-				return 0;
+			if (realBBox.contains(polyBBox)) {
+				return true;
 			}
-			int countOutside = 0;
-			for (int i = x; i < x+width; i++){
-				for (int j = y; j < y+height; j++){
-					if (densityInfo.isGridElemInPolygon(i,j) == false)
-						countOutside++;
+			final long neededInside = Math.round(maxOutsideRatio * width * height);
+			int countInside = 0;
+			for (int i = x; i < x + width; i++) {
+				for (int j = y; j < y + height; j++) {
+					if (densityInfo.isGridElemInPolygon(i, j)) {
+						if (++countInside >= neededInside)
+							return true;
+					}
 				}
 			}
-			double ratio = (double) countOutside  / (width * height) ;
-			return ratio;
+			return false;
 		}
 		
 		public Rectangle getRealBBox(){
@@ -598,8 +597,7 @@ import java.awt.Rectangle;
 
 		@Override
 		public int hashCode() {
-			int hash = x << 24 | y << 16 | width << 8 | height;
-			return hash;
+			return x << 24 | y << 16 | width << 8 | height;
 		}
 		
 		@Override

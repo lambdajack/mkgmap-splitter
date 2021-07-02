@@ -789,8 +789,7 @@ public class SplittableDensityArea {
 				return null;
 			}
 			if (addAndReturn) {
-				double outsidePolygonRatio = tile.calcOutsidePolygonRatio();
-				if (outsidePolygonRatio > MAX_OUTSIDE_RATIO) {
+				if (!tile.outsideRatioIsOK(MAX_OUTSIDE_RATIO)) {
 					return null;
 				}
 				Solution solution = new Solution(myMaxNodes);
