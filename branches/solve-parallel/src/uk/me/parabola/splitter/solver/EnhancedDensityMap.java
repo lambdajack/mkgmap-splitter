@@ -30,7 +30,7 @@ public class EnhancedDensityMap {
 	private final DensityMap densityMap;
 	private int[][] xyMap;
 	private int[][] yxMap;
-	private BitSet[] xyInPolygon;
+	private BitSet xyInPolygon;
 	private double[] aspectRatioFactor;
 	private int minAspectRatioFactorPos;
 	private int maxNodesInDensityMapGridElement = Integer.MIN_VALUE;
@@ -73,12 +73,8 @@ public class EnhancedDensityMap {
 		int width = densityMap.getWidth();
 		int height = densityMap.getHeight();
 		xyMap = new int [width][height];
-		if (polygonArea != null) {
-			xyInPolygon = new BitSet[width];
-			for (int i = 0; i < width; i++) {
-				xyInPolygon[i] = new BitSet(height);
-			}
-		}
+		if (polygonArea != null)
+			xyInPolygon = new BitSet(width * height);
 		int shift = densityMap.getShift();
 		for (int x = 0; x < width; x++){
 			int polyXPos = densityMap.getBounds().getMinLong() +  (x << shift);
@@ -88,7 +84,7 @@ public class EnhancedDensityMap {
 				if (polygonArea != null){
 					int polyYPos = densityMap.getBounds().getMinLat() + (y << shift);
 					if (polygonArea.intersects(polyXPos, polyYPos, 1<<shift, 1<<shift)){
-						xyInPolygon[x].set(y);
+						xyInPolygon.set(x * height + y);
 						if (count > maxNodesInDensityMapGridElementInPoly){
 							maxNodesInDensityMapGridElementInPoly = count;
 						}
@@ -113,7 +109,9 @@ public class EnhancedDensityMap {
 	}
 
 	public boolean isGridElemInPolygon (int x, int y){
-		return polygonArea == null || xyInPolygon[x].get(y);
+		if (polygonArea == null)
+			return true;
+		return xyInPolygon.get(x* densityMap.getHeight() + y);
 	}
 	
 	// calculate aspect ratio of a tile which is a view on the densityMap
