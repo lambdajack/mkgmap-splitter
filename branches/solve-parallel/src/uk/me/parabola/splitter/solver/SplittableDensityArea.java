@@ -581,7 +581,7 @@ public class SplittableDensityArea {
 		final double n75 = 0.75 * maxNodes;
 		final double n85 = 0.85 * maxNodes;
 		while (!threadPool.isTerminated()) {
-			for (int i = 0; i < numAlgos; i++) {
+			for (int i = 0; i < solvers.size(); i++) {
 				if (futures.get(i).isDone()) {
 					Solution sol = solvers.get(i).bestSolution;
 					if (sol.isNice()) {
