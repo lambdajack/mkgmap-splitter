@@ -565,6 +565,10 @@ public class SplittableDensityArea {
 		
 		for (int i = 0; i < numAlgos; i++) {
 			Solver solver = new Solver(i == 1, maxNodes);
+			if (solver.searchAll && startTile.getCount() > 300 * maxNodes)
+				continue; // too complex for FULL
+			if (!solver.searchAll && startTile.getCount() < 10 * maxNodes)
+				continue; // too simple for SOME
 			solver.maxAspectRatio = getStartRatio(startTile);
 			solver.minNodes = startMinNodes;
 			solvers.add(solver);
@@ -1092,6 +1096,13 @@ public class SplittableDensityArea {
 						if (!tests.contains(end))
 							tests.add(end);
 					}
+				}
+			}
+			if (tests.size() > 4) {
+				final int mid = (start + end) / 2;
+				tests.sort((o1, o2) -> Integer.compare(Math.abs(o1 - mid), Math.abs(o2 - mid)));
+				if(tests.getInt(0) != mid) {
+					tests.add(0, mid);
 				}
 			}
 			return tests;
