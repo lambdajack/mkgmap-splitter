@@ -619,7 +619,12 @@ public class SplittableDensityArea {
 		}
 		// sort by number of tiles so that the smaller number comes first
 		// can't use compareTo here as it prefers the higher worstMinNodes value
-		solvers.sort((o1,o2) -> Integer.compare(o1.bestSolution.size(), o2.bestSolution.size()));
+		solvers.sort((o1, o2) -> {
+			int d = Boolean.compare(o1.bestSolution.isNice(), o2.bestSolution.isNice());
+			if (d != 0)
+				return -d; // prefer nice
+			return Integer.compare(o1.bestSolution.size(), o2.bestSolution.size());
+		});
 		Solver best = solvers.get(0);
 		if (best.bestSolution.isEmpty()) {
 			int highestCount = extraDensityInfo.getMaxNodesInDensityMapGridElement();
