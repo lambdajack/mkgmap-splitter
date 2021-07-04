@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -583,7 +584,13 @@ public class SplittableDensityArea {
 		final double n85 = 0.85 * maxNodes;
 		while (!threadPool.isTerminated()) {
 			for (int i = 0; i < solvers.size(); i++) {
-				if (futures.get(i).isDone()) {
+				Future<?> future = futures.get(i);
+				if (future.isDone()) {
+					try {
+						future.get();
+					} catch (InterruptedException | ExecutionException e) {
+						throw new SplitFailedException("parallel solver crashed", e.getCause());
+					}
 					Solution sol = solvers.get(i).bestSolution;
 					if (sol.isNice()) {
 						if (t1 == null)
@@ -617,6 +624,15 @@ public class SplittableDensityArea {
 				e.printStackTrace();
 			}
 		}
+		// call get() on each future to recognise possible exceptions 
+		futures.forEach(f -> {
+			try {
+				f.get();
+			} catch (InterruptedException | ExecutionException e) {
+				Thread.currentThread().interrupt();
+				throw new SplitFailedException("parallel solver crashed", e.getCause());
+			}
+		});
 		// sort by number of tiles so that the smaller number comes first
 		// can't use compareTo here as it prefers the higher worstMinNodes value
 		solvers.sort((o1, o2) -> {
@@ -923,7 +939,6 @@ public class SplittableDensityArea {
 			knownBad.clear();
 			bestSolution = new Solution(myMaxNodes);
 			searchLimit = searchAll? startSearchLimit : maxSearchLimit;
-			
 			TileMetaInfo smiStart = new TileMetaInfo(startTile, null, null);
 			final long veryNiceMinNodes = (long) (VERY_NICE_FILL_RATIO * myMaxNodes);
 			boolean clearIncomplete = false;
