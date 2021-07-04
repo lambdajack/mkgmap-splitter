@@ -92,36 +92,31 @@ import java.awt.Rectangle;
 			return (getCount() == calcCount()); 
 		}
 		
-		public static IntArrayList genTests(int start, int end) {
-			if (end-start < 0)
-				return new IntArrayList(1);
-			int mid = (start + end) / 2;
-			int toAdd = end-start+1;
+		public static IntArrayList genTests(final int start, final int end) {
+			if (end - start < 0)
+				return new IntArrayList(0);
+			final int mid = (start + end) / 2;
+			final int toAdd = end - start + 1;
 			IntArrayList list = new IntArrayList(toAdd);
-			for (int i = 0; i <= mid; i++){
-				int pos = mid + i;
-				if (pos >= start && pos <= end)
-					list.add(pos);
-				if (list.size() >= toAdd)
-					break;
-				if (i == 0)
-					continue;
-				pos = mid - i;
-				if (pos >= start && pos <= end)
-					list.add(pos);
+			list.add(mid);
+			for (int i = 1; i < toAdd / 2; i++) {
+				list.add(mid + i);
+				list.add(mid - i);
 			}
+			if (list.size() < toAdd)
+				list.add(end);
+			if (list.size() < toAdd)
+				list.add(start);
 			return list;
 		}
-
-
 
 		/**
 		 * calculate the numnber of nodes in this tile
 		 * @return
 		 */
-		private long calcCount(){
+		private long calcCount() {
 			long sum = 0;
-			for (int i=0;i<height;i++){
+			for (int i = 0; i < height; i++) {
 				sum += getRowSum(i);
 			}
 			return sum;
@@ -129,6 +124,7 @@ import java.awt.Rectangle;
 		
 		/**
 		 * Calculate the sum of all grid elements within a row
+		 * 
 		 * @param row the row within the tile (0..height-1)
 		 * @return
 		 */
@@ -137,21 +133,23 @@ import java.awt.Rectangle;
 			int mapRow = row + y;
 			long sum = 0;
 			int[] vector = densityInfo.getMapRow(mapRow);
-			if (vector != null){
-				int lastX = x + width;
+			if (vector != null) {
+				final int lastX = x + width;
 				for (int i = x; i < lastX; i++)
 					sum += vector[i];
 			}
 			return sum;
 		}
-		private long getRowSum(int row, long []rowSums){
+
+		private long getRowSum(int row, long[] rowSums) {
 			if (rowSums[row] < 0)
 				rowSums[row] = getRowSum(row);
 			return rowSums[row];
 		}
-		
+
 		/**
 		 * Calculate the sum of all grid elements within a column.
+		 * 
 		 * @param col the column within the tile
 		 * @return
 		 */
@@ -160,14 +158,15 @@ import java.awt.Rectangle;
 			int mapCol = col + x;
 			long sum = 0;
 			int[] vector = densityInfo.getMapCol(mapCol);
-			if (vector != null){
-				int lastY = y + height;
+			if (vector != null) {
+				final int lastY = y + height;
 				for (int i = y; i < lastY; i++)
 					sum += vector[i];
 			}
 			return sum;
 		}
-		private long getColSum(int col, long[] colSums){
+
+		private long getColSum(int col, long[] colSums) {
 			if (colSums[col] < 0)
 				colSums[col] = getColSum(col);
 			return colSums[col];
