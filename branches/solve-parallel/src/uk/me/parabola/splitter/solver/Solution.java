@@ -31,6 +31,7 @@ public class Solution {
 	private final List<Tile> tiles;
 	private final long maxNodes;
 	private double worstAspectRatio = -1;
+	private int numLowCount;
 	private long worstMinNodes = Long.MAX_VALUE;
 	
 	public Solution(long maxNodes) {
@@ -50,7 +51,9 @@ public class Solution {
 		if (aspectRatio < 1.0)
 			aspectRatio = 1.0 / aspectRatio;
 		worstAspectRatio = Math.max(aspectRatio, worstAspectRatio);
-		worstMinNodes = Math.min(tile.getCount(), worstMinNodes); 		
+		worstMinNodes = Math.min(tile.getCount(), worstMinNodes);
+		if (tile.getCount() < maxNodes / 3)
+			numLowCount++;
 		return true;
 	}
 	
@@ -71,6 +74,7 @@ public class Solution {
 			if (worstMinNodes > other.worstMinNodes)
 				worstMinNodes = other.worstMinNodes;
 		}
+		numLowCount += other.numLowCount;
 		tiles.addAll(other.tiles);
 	}
 
@@ -247,14 +251,17 @@ public class Solution {
 	/**
 	 * A solution is considered to be nice when aspect 
 	 * ratios are not extreme and every tile is filled
-	 * with at least 33% of the max-nodes value.
+	 * with at least 33% of the max-nodes value or almost all tiles are filled much better.
 	 * @return
 	 */
 	public boolean isNice() {
-		if (isEmpty() ||
-				worstAspectRatio > SplittableDensityArea.NICE_MAX_ASPECT_RATIO)
+		if (isEmpty() || worstAspectRatio > SplittableDensityArea.NICE_MAX_ASPECT_RATIO)
 			return false;
-		return tiles.size() == 1 || worstMinNodes >= maxNodes / 3;
+		final long low = maxNodes / 3;
+		if (tiles.size() == 1 || worstMinNodes >= low || (numLowCount <= 2 && tiles.size() > 20))
+			return true;
+		double lowRatio = 100.0 * numLowCount / tiles.size();
+		return lowRatio < 3; // less then 3 percent of the tiles are not well filled 
 	}
 	
 	@Override
