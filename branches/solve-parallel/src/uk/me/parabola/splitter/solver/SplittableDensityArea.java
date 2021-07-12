@@ -890,27 +890,12 @@ public class SplittableDensityArea {
 				if (countOK == 2) {
 					bestSol = sols[0];
 					bestSol.merge(sols[1]);
-					// check if we should perform a local optimisation
-					if (minNodes < localOptMinNodes
-							&& (tile.getCount() > 10 * maxNodes && tile.getCount() < 20 * maxNodes)) {
-						long backupMinNodes = minNodes;
-						boolean backupSearchAll = searchAll;
-						minNodes = localOptMinNodes;
-						searchAll = false;
-						Solution sol2 = findSolution(depth, tile, parent, smiParent);
-						minNodes = backupMinNodes;
-						searchAll = backupSearchAll;
-						if (bestSol.compareTo(sol2) > 0) {
-							bestSol = sol2; // we found a good split
-						}
-					}
 					break; // we found a valid split
 				}
 				if (countBad >= searchLimit) {
 					incomplete.put(tile, countDone - 1);
 					break;
 				}
-
 			}
 
 			smi.propagateToParent(smiParent, tile, parent);
@@ -919,6 +904,20 @@ public class SplittableDensityArea {
 				Long x = knownBad.get(tile);
 				if (x == null || x > minNodes)
 					knownBad.put(tile, minNodes);
+			}
+			// check if we should perform a local optimisation
+			if (bestSol != null && minNodes < localOptMinNodes
+					&& (tile.getCount() > 10 * maxNodes && tile.getCount() < 20 * maxNodes)) {
+				long backupMinNodes = minNodes;
+				boolean backupSearchAll = searchAll;
+				minNodes = localOptMinNodes;
+				searchAll = false;
+				Solution sol2 = findSolution(depth, tile, parent, smiParent);
+				minNodes = backupMinNodes;
+				searchAll = backupSearchAll;
+				if (bestSol.compareTo(sol2) > 0) {
+					bestSol = sol2; // we found a good split
+				}
 			}
 			return bestSol;
 		}
@@ -967,7 +966,6 @@ public class SplittableDensityArea {
 					}
 					boolean foundBetter = bestSolution.compareTo(solution) > 0; 
 					if (foundBetter) {
-						localOptMinNodes = (long) (LOCAL_OPT_RATIO * maxNodes); // enable local optimisation
 						Solution prevBest = bestSolution;
 						bestSolution = solution;
 						System.out.println(algoName + "Best solution until now: " + bestSolution.toString()
@@ -977,6 +975,12 @@ public class SplittableDensityArea {
 						if (!prevBest.isEmpty() && prevBest.isNice())
 							factor = Math.min(1.30, (double) bestSolution.getWorstMinNodes() / prevBest.getWorstMinNodes());
 						minNodes = Math.max(myMaxNodes / 3, (long) (bestSolution.getWorstMinNodes() * factor));
+						// enable local optimisation
+						localOptMinNodes = (long) (LOCAL_OPT_RATIO * maxNodes); 
+						int smaller = bestSolution.size() - 1;
+						if (smaller > 0) {
+							localOptMinNodes = startTile.getCount() / smaller;
+						}
 					}
 					if (bestSolution.size() == 1) {
 						if (!beQuiet)
