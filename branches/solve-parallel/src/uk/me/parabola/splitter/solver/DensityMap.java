@@ -42,7 +42,7 @@ import uk.me.parabola.splitter.Utils;
 public class DensityMap {
 	private static final int SEA_NODE_FACTOR = 2;
 	private final int width, height, shift;
-	private final int[][] nodeMap;
+	private int[][] nodeMap;
 	private Area bounds;
 	private long totalNodeCount;
 
@@ -432,6 +432,10 @@ public class DensityMap {
 			}
 		}
 		System.out.println("Added " + addedSeaNodes + " nodes from precompiled sea data.");
+	}
+
+	public void clear() {
+		nodeMap = null;
 	}
 }
 

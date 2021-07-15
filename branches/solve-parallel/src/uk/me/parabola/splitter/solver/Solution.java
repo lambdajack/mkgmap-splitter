@@ -266,11 +266,10 @@ public class Solution {
 	
 	@Override
 	public String toString() {
-		double ratio = (double) Math.round(worstAspectRatio * 100) / 100;
-		long percentage = 100 * worstMinNodes / maxNodes;
 		if (isEmpty())
 			return "is empty";
-		return tiles.size() + " tile(s). The smallest node count is " + worstMinNodes + " (" +  percentage + " %), the worst aspect ratio is near " + ratio;
+		long percentage = 100 * worstMinNodes / maxNodes;
+		return tiles.size() + " tile(s). The smallest node count is " + worstMinNodes + " (" +  percentage + " %)";
 		
 	}
 }
