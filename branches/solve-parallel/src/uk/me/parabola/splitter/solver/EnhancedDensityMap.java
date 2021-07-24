@@ -30,7 +30,7 @@ public class EnhancedDensityMap {
 	private final DensityMap densityMap;
 	private int[][] xyMap;
 	private int[][] yxMap;
-	private BitSet xyOutsidePolygon;
+	private BitSet xyOutsidePolygon = new BitSet();
 	private double[] aspectRatioFactor;
 	private int minAspectRatioFactorPos;
 	private int maxNodesInDensityMapGridElement = Integer.MIN_VALUE;
@@ -44,124 +44,125 @@ public class EnhancedDensityMap {
 		densityMap.clear();
 	}
 
-	
 	/**
 	 * If a polygon is given, filter the density data Compute once complex
 	 * trigonometric results for needed for proper aspect ratio calculations.
 	 * 
 	 */
-	private void prepare(){
+	private void prepare() {
 		// performance: calculate only once the needed complex math results
-		aspectRatioFactor = new double[densityMap.getHeight()+1]; 
-		int minLat = densityMap.getBounds().getMinLat(); 
+		aspectRatioFactor = new double[densityMap.getHeight() + 1];
+		int minLat = densityMap.getBounds().getMinLat();
 		int maxLat = densityMap.getBounds().getMaxLat();
 		int lat = 0;
 		double maxAspectRatioFactor = Double.MIN_VALUE;
 		int minPos = Integer.MAX_VALUE;
-		for (int i = 0; i < aspectRatioFactor.length; i++ ){
+		for (int i = 0; i < aspectRatioFactor.length; i++) {
 			lat = minLat + i * (1 << densityMap.getShift());
 			assert lat <= maxLat;
-			aspectRatioFactor[i] = Math.cos(Math.toRadians(Utils.toDegrees(lat))) ;
-			if (maxAspectRatioFactor < aspectRatioFactor[i]){
+			aspectRatioFactor[i] = Math.cos(Math.toRadians(Utils.toDegrees(lat)));
+			if (maxAspectRatioFactor < aspectRatioFactor[i]) {
 				maxAspectRatioFactor = aspectRatioFactor[i];
 				minPos = i;
 			}
 		}
 		minAspectRatioFactorPos = minPos;
 		assert lat == maxLat;
-		
-		// filter the density map and populate xyMap   
+
+		// filter the density map and populate xyMap
 		int width = densityMap.getWidth();
 		int height = densityMap.getHeight();
-		xyMap = new int [width][];
-		if (polygonArea != null)
-			xyOutsidePolygon = new BitSet();
+		xyMap = new int[width][];
 		int shift = densityMap.getShift();
-		for (int x = 0; x < width; x++){
-			int polyXPos = densityMap.getBounds().getMinLong() +  (x << shift);
+		for (int x = 0; x < width; x++) {
+			int polyXPos = densityMap.getBounds().getMinLong() + (x << shift);
 			int[] xCol = null;
-			for(int y = 0; y < height; y++){
+			xCol = new int[height];
+			boolean colNeeded = false;
+			for (int y = 0; y < height; y++) {
 				int count = densityMap.getNodeCount(x, y);
-				if (polygonArea != null){
+				if (polygonArea != null) {
 					int polyYPos = densityMap.getBounds().getMinLat() + (y << shift);
-					if (polygonArea.intersects(polyXPos, polyYPos, 1<<shift, 1<<shift)){
-						if (count > maxNodesInDensityMapGridElementInPoly){
-							maxNodesInDensityMapGridElementInPoly = count;
-						}
+					if (polygonArea.intersects(polyXPos, polyYPos, 1 << shift, 1 << shift)) {
+						maxNodesInDensityMapGridElementInPoly = Math.max(count, maxNodesInDensityMapGridElementInPoly);
 					} else {
 						xyOutsidePolygon.set(x * height + y);
 					}
 				}
-				if (count > 0){
-					if (count > maxNodesInDensityMapGridElement)
-						maxNodesInDensityMapGridElement = count;
-					if (xCol == null)
-						xCol = new int[height];
+				if (count > 0) {
+					maxNodesInDensityMapGridElement = Math.max(count, maxNodesInDensityMapGridElement);
 					xCol[y] = count;
+					colNeeded = true;
 				}
 			}
-			
-			xyMap[x] = xCol;
+			if (colNeeded)
+				xyMap[x] = xCol;
 		}
+		
 		// create and populate yxMap, this helps to speed up row access
-		yxMap = new int [height][];
-		for(int y = 0; y < height; y++){
-			boolean needed = false;
+		yxMap = new int[height][];
+		for (int y = 0; y < height; y++) {
+			boolean rowNeeded = false;
 			int[] yRow = new int[width];
-			for (int x = 0; x < width; x++){
+			for (int x = 0; x < width; x++) {
 				int count = 0;
 				if (xyMap[x] != null)
 					count = xyMap[x][y];
 				if (count > 0) {
-					needed = true;
+					rowNeeded = true;
 					yRow[x] = count;
 				}
 			}
-			if (needed)
+			if (rowNeeded)
 				yxMap[y] = yRow;
 		}
 	}
 
-	public boolean isGridElemInPolygon (int x, int y){
+	public boolean isGridElemInPolygon(int x, int y) {
 		if (polygonArea == null || xyOutsidePolygon.isEmpty())
 			return true;
-		return !xyOutsidePolygon.get(x* densityMap.getHeight() + y);
+		return !xyOutsidePolygon.get(x * densityMap.getHeight() + y);
 	}
-	
+
 	// calculate aspect ratio of a tile which is a view on the densityMap
 	public double getAspectRatio(Rectangle r) {
 		double ratio;
-		double maxWidth ;
-		if (r.y < minAspectRatioFactorPos && r.y+r.height > minAspectRatioFactorPos){
+		double maxWidth;
+		if (r.y < minAspectRatioFactorPos && r.y + r.height > minAspectRatioFactorPos) {
 			maxWidth = r.width; // tile crosses equator
-		}else {
+		} else {
 			double width1 = r.width * aspectRatioFactor[r.y];
 			double width2 = r.width * aspectRatioFactor[r.y + r.height];
-			maxWidth = Math.max(width1, width2);		
+			maxWidth = Math.max(width1, width2);
 		}
-		ratio = maxWidth/r.height;
+		ratio = maxWidth / r.height;
 		return ratio;
 	}
-	
+
 	public Area getBounds() {
 		return densityMap.getBounds();
 	}
+
 	public DensityMap getDensityMap() {
 		return densityMap;
 	}
-	
-	public long getNodeCount(){
+
+	public long getNodeCount() {
 		return densityMap.getNodeCount();
 	}
+
 	public int[] getMapRow(int mapRow) {
 		return yxMap[mapRow];
 	}
+
 	public int[] getMapCol(int mapCol) {
 		return xyMap[mapCol];
 	}
+
 	public double[] getAspectRatioFactor() {
 		return aspectRatioFactor;
 	}
+
 	public int getMinAspectRatioFactorPos() {
 		return minAspectRatioFactorPos;
 	}
@@ -177,7 +178,6 @@ public class EnhancedDensityMap {
 	public java.awt.geom.Area getPolygonArea() {
 		return polygonArea;
 	}
-
 
 	public boolean allInsidePolygon() {
 		return polygonArea == null || xyOutsidePolygon.isEmpty();
