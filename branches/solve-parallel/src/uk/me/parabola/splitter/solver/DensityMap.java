@@ -108,7 +108,7 @@ public class DensityMap {
 		if (!simpleArea.isSingular()) {
 			List<List<Point>> shapes = Utils.areaToShapes(simpleArea);
 			if (shapes.removeIf(s -> !Utils.clockwise(s))) {
-				System.out.println("Warning: Rastered polaygon area contains holes, polygon is probably concave, trying to fix this");
+				System.out.println("Warning: Rastered polagon area contains holes, polygon is probably concave, trying to fix this");
 				simpleArea.reset();
 				shapes.forEach(s -> simpleArea.add(Utils.shapeToArea(s)));
 			}
