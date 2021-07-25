@@ -444,6 +444,9 @@ import uk.me.parabola.splitter.Utils;
 			return height;
 		}
 		
+		public int findFirstHigher(int axis, TileMetaInfo smi, long limit) {
+			return axis == SplittableDensityArea.AXIS_HOR ? findFirstXHigher(smi, limit) : findFirstYHigher(smi, limit);
+		}
 		/**
 		 *  
 		 * @return aspect ratio of this tile
@@ -627,26 +630,42 @@ import uk.me.parabola.splitter.Utils;
 		 * @param maxNodes the maximum
 		 * @return minimum number of parts for the given maximum
 		 */
-		public int getMinParts (long maxNodes) {
+		public int getMinParts(long maxNodes) {
+			long minCount = countInside();
+			int nMin = (int) (minCount / maxNodes);
+			if (nMin * maxNodes < minCount)
+				nMin++;
+			return nMin;
+		}
+		
+		public long countInside() {
 			long minCount = 0;
-			if (densityInfo.getPolygonArea() == null)
-				minCount = count;
-			else {
-				for (int i = 0; i  < width; i++) {
-					int[] col = densityInfo.getMapCol(i+x);
-					if (col != null) {
-						for (int k = 0; k < height; k++) {
-							if (densityInfo.isGridElemInPolygon(x+i, y+k))
-								minCount += col[y+k];
-						}
+			if (densityInfo.getPolygonArea() == null || densityInfo.allInsidePolygon())
+				return count;
+			for (int i = 0; i < width; i++) {
+				final int[] col = densityInfo.getMapCol(x + i);
+				if (col != null) {
+					for (int k = 0; k < height; k++) {
+						if (densityInfo.isGridElemInPolygon(x + i, y + k))
+							minCount += col[y + k];
 					}
 				}
 			}
-			int nMin = (int) (minCount / maxNodes);
-			if (nMin * maxNodes < minCount)
-				nMin++; 
-			return nMin;
-		} 	
+			return minCount;
+		}
+
+		public int countElemsOutside() {
+			if (densityInfo.getPolygonArea() == null || densityInfo.allInsidePolygon())
+				return 0;
+			int num = 0;
+			for (int i = 0; i < width; i++) {
+				for (int k = 0; k < height; k++) {
+					if (!densityInfo.isGridElemInPolygon(x + i, y + k))
+						num++;
+				}
+			}
+			return num;
+		}
 
 		public List<Tile> divide(long maxNodes) {
 			if (getCount() < maxNodes)
@@ -678,4 +697,24 @@ import uk.me.parabola.splitter.Utils;
 		public double getFillRatio() {
 			return (double)getCount() / (width * height);
 		} 
+		
+		/**
+		 * Find largest count in single grid element. Might be outside of the polygon.
+		 * @return largest count in single grid element
+		 */
+		int getLargestInfo() {
+			int largest = 0;
+			for (int i = 0; i < width; i++) {
+				final int[] col = densityInfo.getMapCol(x + i);
+				if (col != null) {
+					for (int k = 0; k < height; k++) {
+						int n = col[y+k];
+						if (n > largest) {
+							largest = n;
+						}
+					}
+				}
+			}
+			return largest;
+		}
 	}

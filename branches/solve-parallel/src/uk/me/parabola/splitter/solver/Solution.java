@@ -258,7 +258,8 @@ public class Solution {
 		if (isEmpty() || worstAspectRatio > SplittableDensityArea.NICE_MAX_ASPECT_RATIO)
 			return false;
 		final long low = maxNodes / 3;
-		if (tiles.size() == 1 || worstMinNodes >= low || (numLowCount <= 2 && tiles.size() > 20))
+		if (tiles.size() == 1 || worstMinNodes >= low || (numLowCount <= 2 && tiles.size() > 20)
+				|| (numLowCount == 1 && tiles.size() > 4))
 			return true;
 		double lowRatio = 100.0 * numLowCount / tiles.size();
 		return lowRatio < 3; // less then 3 percent of the tiles are not well filled 
@@ -271,5 +272,22 @@ public class Solution {
 		long percentage = 100 * worstMinNodes / maxNodes;
 		return tiles.size() + " tile(s). The smallest node count is " + worstMinNodes + " (" +  percentage + " %)";
 		
+	}
+
+	/**
+	 * Returns true if this solution is smaller or better than the other.
+	 * @param other the other solution
+	 * @return true if this solution is smaller or better than the other
+	 */
+	public boolean isSmallerOrBetter(Solution other) {
+		if (isEmpty())
+			return false;
+		if (other == null || other.isEmpty() && !isEmpty())
+			return true;
+		if (other.size() > this.size())
+			return true;
+		if (other.size() == this.size())
+			return compareTo(other) < 0;
+		return false;
 	}
 }
