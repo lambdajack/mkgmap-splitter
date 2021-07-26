@@ -39,10 +39,9 @@ public class BackgroundInputStream extends InputStream {
 		this(source, QUEUE_SIZE, BUFFER_SIZE);
 	}
 
-	public BackgroundInputStream(InputStream source, int queueSize, int bufferSize)
-	{
-		inQueue = new ArrayBlockingQueue<byte[]>(queueSize);
-		recycleQueue = new ArrayBlockingQueue<byte[]>(queueSize + 1);
+	public BackgroundInputStream(InputStream source, int queueSize, int bufferSize) {
+		inQueue = new ArrayBlockingQueue<>(queueSize);
+		recycleQueue = new ArrayBlockingQueue<>(queueSize + 1);
 		sourceStream = source;
 		this.bufferSize = bufferSize;
 	}

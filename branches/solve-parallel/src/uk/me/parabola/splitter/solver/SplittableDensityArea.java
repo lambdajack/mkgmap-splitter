@@ -282,11 +282,11 @@ public class SplittableDensityArea {
 		this.stopNumber = wantedTiles;
 		long currMaxNodes = (long) (this.allDensities.getNodeCount() / (wantedTiles * 0.95));
 		class Pair {
-			long maxNodes;
+			long myMaxNodes;
 			int numTiles;
 
 			Pair(long maxNodes, int numTiles) {
-				this.maxNodes = maxNodes;
+				this.myMaxNodes = maxNodes;
 				this.numTiles = numTiles;
 			}
 		}
@@ -308,11 +308,11 @@ public class SplittableDensityArea {
 			Pair pair = new Pair(currMaxNodes, sol.size());
 			if (sol.size() > wantedTiles) {
 				if (bestAbove == null || bestAbove.numTiles > pair.numTiles
-						|| (bestAbove.numTiles == pair.numTiles && pair.maxNodes < bestAbove.maxNodes))
+						|| (bestAbove.numTiles == pair.numTiles && pair.myMaxNodes < bestAbove.myMaxNodes))
 					bestAbove = pair;
 			} else {
 				if (bestBelow == null || bestBelow.numTiles < pair.numTiles
-						|| (bestBelow.numTiles == pair.numTiles && pair.maxNodes > bestBelow.maxNodes))
+						|| (bestBelow.numTiles == pair.numTiles && pair.myMaxNodes > bestBelow.myMaxNodes))
 					bestBelow = pair;
 			}
 			long testMaxNodes;
@@ -320,7 +320,7 @@ public class SplittableDensityArea {
 				testMaxNodes = Math.min(Math.round((double) currMaxNodes * sol.size() / wantedTiles),
 						this.allDensities.getNodeCount() - 1);
 			else
-				testMaxNodes = (bestBelow.maxNodes + bestAbove.maxNodes) / 2;
+				testMaxNodes = (bestBelow.myMaxNodes + bestAbove.myMaxNodes) / 2;
 			if (testMaxNodes == currMaxNodes) {
 				System.err.println("Cannot find a good split with exactly " + wantedTiles + " areas");
 				printFinalSplitMsg(sol);
@@ -1046,8 +1046,10 @@ public class SplittableDensityArea {
 					searchAll = false;
 					countBad = 0;
 					Solution sol2 = findSolution(depth, tile, parent, smiParent);
-					if (DEBUG && countBad > 200_000) {
-						System.out.println(name + ": bad opt? tile " + tile + " required " + countBad + " bad tests for " + sol2);
+					if(DEBUG) {
+						if (countBad > 200_000) {
+							System.out.println(name + ": bad opt? tile " + tile + " required " + countBad + " bad tests for " + sol2);
+						}
 					}
 					optLoops++;
 					minNodes = backupMinNodes;

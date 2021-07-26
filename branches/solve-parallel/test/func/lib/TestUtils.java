@@ -43,6 +43,10 @@ public class TestUtils {
 	private static final List<String> files = new ArrayList<>();
 	private static final Deque<Closeable> open = new ArrayDeque<>();
 
+	private TestUtils () {
+		// avoid implicit public constructor
+	}
+	
 	static {
 		files.add(Args.DEF_AREAS_KML);
 		files.add(Args.DEF_AREAS_LIST);
@@ -51,11 +55,7 @@ public class TestUtils {
 		files.add(Args.DEF_DENSITIES);
 		files.add(Args.DEF_TEMPLATE);
 
-		Runnable r = new Runnable() {
-			public void run() {
-				deleteOutputFiles();
-			}
-		};
+		Runnable r = TestUtils::deleteOutputFiles;
 		Thread t = new Thread(r);
 		Runtime.getRuntime().addShutdownHook(t);
 	}
@@ -92,38 +92,26 @@ public class TestUtils {
 	}
 
 	/**
-	 * Run with a single argument.  The standard arguments are added first.
-	 * @param arg The argument.
-	 */
-	public static Outputs run(String arg) {
-		return run(new String[] {arg});
-	}
-
-	/**
 	 * Run with the given args.  Some standard arguments are added first.
 	 *
 	 * To run without the standard args, use runRaw().
 	 * @param in The arguments to use.
 	 */
-	public static Outputs run(String ... in) {
+	public static Outputs run(String... in) {
 		List<String> args = new ArrayList<>(Arrays.asList(in));
 
 		OutputStream outsink = new ByteArrayOutputStream();
-		PrintStream out = new PrintStream(outsink);
 
 		OutputStream errsink = new ByteArrayOutputStream();
-		PrintStream err = new PrintStream(errsink);
 
 		PrintStream origout = System.out;
 		PrintStream origerr = System.err;
 
-		try {
+		try (PrintStream out = new PrintStream(outsink); PrintStream err = new PrintStream(errsink)) {
 			System.setOut(out);
 			System.setErr(err);
 			Main.mainNoSystemExit(args.toArray(new String[args.size()]));
 		} finally {
-			out.close();
-			err.close();
 			System.setOut(origout);
 			System.setErr(origerr);
 		}

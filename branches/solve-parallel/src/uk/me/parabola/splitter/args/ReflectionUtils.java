@@ -23,7 +23,7 @@ import java.util.Map;
  * @author Chris Miller
  */
 public class ReflectionUtils {
-	private static final Map<Class<?>, Class<?>> boxedMappings = new HashMap<Class<?>, Class<?>>(15);
+	private static final Map<Class<?>, Class<?>> boxedMappings = new HashMap<>(15);
 
 	static {
 		boxedMappings.put(Boolean.TYPE, Boolean.class);

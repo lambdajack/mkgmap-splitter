@@ -27,7 +27,7 @@ public class ParamConverter {
 	private final Map<Class<?>, Object> primitiveDefaults;
 
 	public ParamConverter() {
-		converterMap = new HashMap<Class<?>, Converter<?>>(10);
+		converterMap = new HashMap<>(10);
 		converterMap.put(String.class, new Converter<String>() { @Override String convert(String value) { return value; } });
 		converterMap.put(Boolean.class, new Converter<Boolean>() { @Override Boolean convert(String value) { return Boolean.valueOf(value); } });
 		converterMap.put(Integer.class, new IntegerConverter());
@@ -35,7 +35,7 @@ public class ParamConverter {
 		converterMap.put(File.class, new Converter<File>() { @Override File convert(String value) { return new File(value); } });
 		converterMap.put(ThreadCount.class, new ThreadCountConverter());
 
-		primitiveDefaults = new HashMap<Class<?>, Object>(10);
+		primitiveDefaults = new HashMap<>(10);
 		primitiveDefaults.put(Boolean.TYPE, Boolean.FALSE);
 		primitiveDefaults.put(Byte.TYPE, Byte.valueOf((byte) 0));
 		primitiveDefaults.put(Character.TYPE, Character.valueOf('\u0000'));

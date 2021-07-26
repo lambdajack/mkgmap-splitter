@@ -56,7 +56,7 @@ public class CityLoader {
 	}
 
 	public List<City> load(BufferedReader reader) throws IOException {
-		List<City> cities = new ArrayList<City>(1000);
+		List<City> cities = new ArrayList<>(1000);
 		String line;
 		int lineNumber = 0;
 		while ((line = reader.readLine()) != null) {

@@ -15,7 +15,6 @@ package uk.me.parabola.splitter.geo;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -42,12 +41,7 @@ public class DefaultCityFinder implements CityFinder {
 		lons = new int[cities.size()];
 		citiesByLat = new City[cities.size()];
 
-		Collections.sort(cities, new Comparator<City>() {
-			@Override
-			public int compare(City c1, City c2) {
-				return c1.getLat() < c2.getLat() ? -1 : c1.getLat() == c2.getLat() ? 0 : 1;
-			}
-		});
+		cities.sort((c1,c2) -> Integer.compare(c1.getLat(), c2.getLat()));
 		int i = 0;
 		for (City city : cities) {
 			lats[i] = city.getLat();
@@ -76,7 +70,7 @@ public class DefaultCityFinder implements CityFinder {
 		if (minLatIndex > maxLatIndex)
 			return Collections.emptySet();
 
-		Set<City> hits = new HashSet<City>(100);
+		Set<City> hits = new HashSet<>(100);
 
 		for (int i = minLatIndex; i <= maxLatIndex; i++) {
 			City city = citiesByLat[i];
