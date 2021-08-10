@@ -252,9 +252,11 @@ public class PolygonFileReader {
 		if (beginPoint != null) {
 			polygonPath.moveTo(beginPoint[0], beginPoint[1]);
 		}
-		
 		// Convert the path into an area and return.
-		return new Area(polygonPath);
+		Area area = new Area(polygonPath);
+		if (!area.isSingular())
+			throw new OsmosisRuntimeException("Invalid polygon ring in polygon-file, possibly self-intersecting");
+		return area;
 	}
 	
 	
