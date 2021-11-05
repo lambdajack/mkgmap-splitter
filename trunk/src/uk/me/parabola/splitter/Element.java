@@ -41,20 +41,25 @@ public abstract class Element {
 	}
 
 	public static class Tag {
-		public Tag(String key,String value) {
+		public final String key, value;
+
+		public Tag(String key, String value) {
 			this.key = key;
 			this.value = value;
 		}
+
 		public String getKey() {
 			return key;
 		}
+
 		public String getValue() {
 			return value;
 		}
-		public String toString (){
+
+		@Override
+		public String toString() {
 			return key + "=" + value;
 		}
-		final public String key,value;
 	}
 	
 	public void addTag(String key, String value) {

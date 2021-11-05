@@ -813,7 +813,7 @@ class MultiTileProcessor extends AbstractMapProcessor {
 			}
 		}
 		boolean complainedAboutSize = false;
-		Rectangle mpBbox = null;
+		Rectangle mpBbox;
 		boolean hasMissingWays = false;
 		while (wayMembers.size() > 0){
 			polygonWays.clear();

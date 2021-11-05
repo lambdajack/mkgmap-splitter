@@ -53,7 +53,6 @@ public class Outputs {
 	 * @param strings The list of strings to check.
 	 */
 	public void checkOutput(String... strings) {
-		String out = getOut();
 		for (String s : strings) {
 			if (!out.contains(s)) {
 				// Test has failed.  Construct an assertion that will print
@@ -71,7 +70,6 @@ public class Outputs {
 	 * @param strings The list of strings to check.
 	 */
 	public void checkError(String... strings) {
-		String err = getErr();
 		for (String s : strings) {
 			if (!err.contains(s)) {
 				// Test has failed.  Construct an assertion that will print

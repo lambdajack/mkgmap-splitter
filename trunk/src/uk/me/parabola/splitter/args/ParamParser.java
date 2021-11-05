@@ -64,6 +64,7 @@ public class ParamParser {
 		return errors;
 	}
 
+	@SuppressWarnings("unchecked")
 	private <P> P createProxy(Class<P> paramInterface, String... args) {
 
 		Map<String, MethodParamPair> params = new HashMap<>();
@@ -177,7 +178,7 @@ public class ParamParser {
 		return result;
 	}
 
-	public <P> void displayUsage() {
+	public void displayUsage() {
 		System.out.println("Usage: java [JAVA_OPTIONS] -jar splitter.jar [OPTIONS] input_file (*.osm or *.pbf or *.o5m)");
 		System.out.println("Options:");
 		
@@ -222,7 +223,7 @@ public class ParamParser {
 	     return String.format("%1$-" + wantedLen + "s", s);  
 	}
 
-	private static <P> String getParameterName(Method method, Option option) {
+	private static String getParameterName(Method method, Option option) {
 		return option.name().length() == 0 ? ReflectionUtils.getParamName(method) : option.name();
 	}
 

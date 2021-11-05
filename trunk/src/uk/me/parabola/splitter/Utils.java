@@ -49,6 +49,10 @@ public class Utils {
 	public static final int MIN_LON_MAP_UNITS = toMapUnit(-180);
 	public static final int MAX_LON_MAP_UNITS = toMapUnit(180);
 
+	private Utils() {
+		// avoid implicit public constructor
+	}
+	
 	public static String format(int number) {
 		return FORMATTER.format(number);
 	}

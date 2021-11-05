@@ -228,8 +228,12 @@ public class Main {
 			if (areaList.getAreas().isEmpty()) {
 				System.err.println("Failed to calculate areas. See stdout messages for details.");
 				System.out.println("Failed to calculate areas.");
-				System.out.println("Sorry. Cannot split the file without creating huge, almost empty, tiles.");
-				System.out.println("Please specify a bounding polygon with the --polygon-file parameter.");
+				if (numTiles < 2) {
+					System.out.println("Sorry. Cannot split the file without creating huge, almost empty, tiles.");
+					System.out.println("Please specify a bounding polygon with the --polygon-file parameter.");
+				} else {
+					System.out.println("Probably the number of tiles is too high for the given resolution.");
+				}
 				throw new SplitFailedException("");
 			}
 			int mapId = mainOptions.getMapid();

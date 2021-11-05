@@ -13,11 +13,14 @@
 
 package uk.me.parabola.splitter.solver;
 
+import java.awt.Rectangle;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import uk.me.parabola.splitter.Area;
 import uk.me.parabola.splitter.Utils;
-
-import java.awt.Rectangle;
 
 /**
 	 * This class implements a "view" on a rectangle covering a part
@@ -54,10 +57,9 @@ import java.awt.Rectangle;
 		 */
 		public Tile(EnhancedDensityMap densityInfo, Rectangle r) {
 			super(r);
-			if (r.x < 0 || r.y < 0
-				|| r.x + r.width > densityInfo.getDensityMap().getWidth()
-				|| r.y + r.height > densityInfo.getDensityMap().getHeight())
-			throw new IllegalArgumentException("Rectangle doesn't fit into density map");
+			if (r.x < 0 || r.y < 0 || r.x + r.width > densityInfo.getDensityMap().getWidth()
+					|| r.y + r.height > densityInfo.getDensityMap().getHeight())
+				throw new IllegalArgumentException("Rectangle doesn't fit into density map");
 			
 			this.densityInfo = densityInfo;
 			count = calcCount();
@@ -93,48 +95,31 @@ import java.awt.Rectangle;
 			return (getCount() == calcCount()); 
 		}
 		
-		public IntArrayList genXTests(TileMetaInfo smi) {
-			int start = this.findValidStartX(smi);
-			int end = this.findValidEndX(smi);
-			return genTests(start, end);
-		}
-
-		public IntArrayList genYTests(TileMetaInfo smi) {
-			int start = this.findValidStartY(smi);
-			int end = this.findValidEndY(smi);
-			return genTests(start, end);
-		}
-		
-		public static IntArrayList genTests(int start, int end) {
-			if (end-start < 0)
-				return new IntArrayList(1);
-			int mid = (start + end) / 2;
-			int toAdd = end-start+1;
+		public static IntArrayList genTests(final int start, final int end) {
+			if (end - start < 0)
+				return new IntArrayList(0);
+			final int mid = (start + end) / 2;
+			final int toAdd = end - start + 1;
 			IntArrayList list = new IntArrayList(toAdd);
-			for (int i = 0; i <= mid; i++){
-				int pos = mid + i;
-				if (pos >= start && pos <= end)
-					list.add(pos);
-				if (list.size() >= toAdd)
-					break;
-				if (i == 0)
-					continue;
-				pos = mid - i;
-				if (pos >= start && pos <= end)
-					list.add(pos);
+			list.add(mid);
+			for (int i = 1; i < toAdd / 2; i++) {
+				list.add(mid + i);
+				list.add(mid - i);
 			}
+			if (list.size() < toAdd)
+				list.add(end);
+			if (list.size() < toAdd)
+				list.add(start);
 			return list;
 		}
 
-
-
 		/**
-		 * calculate the numnber of nodes in this tile
+		 * calculate the number of nodes in this tile
 		 * @return
 		 */
-		private long calcCount(){
+		private long calcCount() {
 			long sum = 0;
-			for (int i=0;i<height;i++){
+			for (int i = 0; i < height; i++) {
 				sum += getRowSum(i);
 			}
 			return sum;
@@ -142,6 +127,7 @@ import java.awt.Rectangle;
 		
 		/**
 		 * Calculate the sum of all grid elements within a row
+		 * 
 		 * @param row the row within the tile (0..height-1)
 		 * @return
 		 */
@@ -150,21 +136,23 @@ import java.awt.Rectangle;
 			int mapRow = row + y;
 			long sum = 0;
 			int[] vector = densityInfo.getMapRow(mapRow);
-			if (vector != null){
-				int lastX = x + width;
-				for (int i = x; i < lastX; i++)
+			if (vector != null) {
+				final int lastX = x + width;
+				for (int i = x; i < lastX; i++) 
 					sum += vector[i];
 			}
 			return sum;
 		}
-		private long getRowSum(int row, long []rowSums){
+
+		private long getRowSum(int row, long[] rowSums) {
 			if (rowSums[row] < 0)
 				rowSums[row] = getRowSum(row);
 			return rowSums[row];
 		}
-		
+
 		/**
 		 * Calculate the sum of all grid elements within a column.
+		 * 
 		 * @param col the column within the tile
 		 * @return
 		 */
@@ -173,14 +161,15 @@ import java.awt.Rectangle;
 			int mapCol = col + x;
 			long sum = 0;
 			int[] vector = densityInfo.getMapCol(mapCol);
-			if (vector != null){
-				int lastY = y + height;
+			if (vector != null) {
+				final int lastY = y + height;
 				for (int i = y; i < lastY; i++)
 					sum += vector[i];
 			}
 			return sum;
 		}
-		private long getColSum(int col, long[] colSums){
+
+		private long getColSum(int col, long[] colSums) {
 			if (colSums[col] < 0)
 				colSums[col] = getColSum(col);
 			return colSums[col];
@@ -423,7 +412,7 @@ import java.awt.Rectangle;
 			return smi.getValidEndY();
 		}
 		
-		public int findFirstXHigher(TileMetaInfo smi, long limit){
+		public int findFirstXHigher(TileMetaInfo smi, long limit) {
 			long sum = 0;
 			int start = (smi.getFirstNonZeroX() > 0) ? smi.getFirstNonZeroX() : 0;
 			for (int i = start; i < width; i++) {
@@ -432,15 +421,14 @@ import java.awt.Rectangle;
 					continue;
 				if (smi.getFirstNonZeroX() < 0)
 					smi.setFirstNonZeroX(i);
-				if (sum > limit){
+				if (sum > limit) {
 					return i;
-					
 				}
 			}
 			return height;
 		}
 
-		public int findFirstYHigher(TileMetaInfo smi, long limit){
+		public int findFirstYHigher(TileMetaInfo smi, long limit) {
 			long sum = 0;
 			int start = (smi.getFirstNonZeroY() > 0) ? smi.getFirstNonZeroY() : 0;
 			for (int i = start; i < height; i++) {
@@ -449,14 +437,16 @@ import java.awt.Rectangle;
 					continue;
 				if (smi.getFirstNonZeroY() < 0)
 					smi.setFirstNonZeroY(i);
-				if (sum > limit){
+				if (sum > limit) {
 					return i;
 				}
 			}
 			return height;
 		}
-
 		
+		public int findFirstHigher(int axis, TileMetaInfo smi, long limit) {
+			return axis == SplittableDensityArea.AXIS_HOR ? findFirstXHigher(smi, limit) : findFirstYHigher(smi, limit);
+		}
 		/**
 		 *  
 		 * @return aspect ratio of this tile
@@ -475,9 +465,9 @@ import java.awt.Rectangle;
 			long sumRemovedRowCounts = 0;
 			int minX = -1;
 			for (int i = 0; i < width; i++) {
-				long colSum = getColSum(i) ; 
-				boolean needed = (densityInfo.getPolygonArea() == null) ? colSum > 0 : (colOutsidePolygon(i) == false);
-				if (needed){
+				long colSum = getColSum(i);
+				boolean needed = (densityInfo.getPolygonArea() == null) ? colSum > 0 : !colOutsidePolygon(i);
+				if (needed) {
 					minX = x + i;
 					break;
 				}
@@ -485,9 +475,9 @@ import java.awt.Rectangle;
 			}
 			int maxX = -1;
 			for (int i = width - 1; i >= 0; i--) {
-				long colSum = getColSum(i) ; 
-				boolean needed = (densityInfo.getPolygonArea() == null) ? colSum > 0 : (colOutsidePolygon(i) == false);
-				if (needed){
+				long colSum = getColSum(i);
+				boolean needed = (densityInfo.getPolygonArea() == null) ? colSum > 0 : !colOutsidePolygon(i);
+				if (needed) {
 					maxX = x + i;
 					break;
 				}
@@ -496,8 +486,8 @@ import java.awt.Rectangle;
 			int minY = -1;
 			for (int i = 0; i < height; i++) {
 				long rowSum = getRowSum(i);
-				boolean needed = (densityInfo.getPolygonArea() == null) ? rowSum > 0 : (rowOutsidePolygon(i) == false);
-				if (needed){
+				boolean needed = (densityInfo.getPolygonArea() == null) ? rowSum > 0 : !rowOutsidePolygon(i);
+				if (needed) {
 					minY = y + i;
 					break;
 				}
@@ -506,30 +496,30 @@ import java.awt.Rectangle;
 			int maxY = -1;
 			for (int i = height - 1; i >= 0; i--) {
 				long rowSum = getRowSum(i);
-				boolean needed = (densityInfo.getPolygonArea() == null) ? rowSum > 0 : (rowOutsidePolygon(i) == false);
-				if (needed){
+				boolean needed = (densityInfo.getPolygonArea() == null) ? rowSum > 0 : !rowOutsidePolygon(i);
+				if (needed) {
 					maxY = y + i;
 					break;
 				}
 				sumRemovedRowCounts += rowSum;
 			}
-			assert minX <= maxX;
-			assert minY <= maxY;
-			assert maxX >= 0;
-			assert maxY >= 0;
+			if (minX > maxX || minY > maxY || maxX < 0 || maxY < 0) {
+				return new Tile(densityInfo, x, y, 0, 0, 0);
+			}
 			long newCount = getCount();
 			int modWidth = maxX - minX + 1;
 			int modHeight = maxY - minY + 1;
-			if (densityInfo.getPolygonArea() != null){
-				if (modWidth != width || modHeight != height){
-					// tile was trimmed, try hard to avoid a new costly calculation of the count value
-					if (width == modWidth){
-						newCount = getCount() - sumRemovedRowCounts; 
-					} else if (height == modHeight){
+			if (densityInfo.getPolygonArea() != null) {
+				if (modWidth != width || modHeight != height) {
+					// tile was trimmed, try hard to avoid a new costly calculation of the count
+					// value
+					if (width == modWidth) {
+						newCount = getCount() - sumRemovedRowCounts;
+					} else if (height == modHeight) {
 						newCount = getCount() - sumRemovedColCounts;
 					} else {
-//						System.out.printf("ouch: %d %d %d %d (%d) -> %d %d %d %d\n",x,y,width,height,count,minX,minY, maxX - minX + 1, maxY - minY + 1 );
-						return new Tile (densityInfo, new Rectangle(minX, minY, modWidth, modHeight));
+						// worst case: recalculate
+						return new Tile(densityInfo, new Rectangle(minX, minY, modWidth, modHeight));
 					}
 				}
 			}
@@ -566,39 +556,40 @@ import java.awt.Rectangle;
 
 		public boolean outsidePolygon(){
 			java.awt.geom.Area polygonArea = densityInfo.getPolygonArea();
-			if (polygonArea == null)
-				return false;
-			if (polygonArea.intersects(getRealBBox()))
-				return false;
-			return true;
+			return  polygonArea != null && !polygonArea.intersects(getRealBBox());
 		}
 
 		/**
-		 * Count the number of grid elements which are outside of the polygon area,
-		 * divide it by the total number of grid elements covered by this tile to
-		 * get a value between 0 and 1 (including).
-		 * @return
+		 * 
+		 * Check if enough grid elements are inside the polygon.
+		 * @param maxOutsideRatio the wanted ratio 
+		 * @return true if the ratio inside/outside is greater than the given value 
 		 */
-		public double calcOutsidePolygonRatio (){
-			if (densityInfo.getPolygonArea() == null)
-				return 0;
+		public boolean outsideRatioIsOK(final double maxOutsideRatio) {
+			if (densityInfo.allInsidePolygon())
+				return true;
 			Rectangle realBBox = getRealBBox();
-//			if (densityInfo.getPolygonArea().contains(realBBox) )
-//				return 0;
 			// check special case: tile may contain the polygon
 			Rectangle polyBBox = densityInfo.getPolygonArea().getBounds();
-			if (realBBox.contains(polyBBox)){
-				return 0;
+			if (realBBox.contains(polyBBox)) {
+				return true;
 			}
-			int countOutside = 0;
-			for (int i = x; i < x+width; i++){
-				for (int j = y; j < y+height; j++){
-					if (densityInfo.isGridElemInPolygon(i,j) == false)
-						countOutside++;
+			final long maxOutsde = (long) (maxOutsideRatio * (width * height));
+			final long neededInside = width * height - maxOutsde;
+			int countInside = 0;
+			int countOutside= 0;
+			for (int i = x; i < x + width; i++) {
+				for (int j = y; j < y + height; j++) {
+					if (densityInfo.isGridElemInPolygon(i, j)) {
+						if (++countInside >= neededInside)
+							return true;
+					} else {
+						if (++countOutside >= maxOutsde)
+							return false;
+					}
 				}
 			}
-			double ratio = (double) countOutside  / (width * height) ;
-			return ratio;
+			return false;
 		}
 		
 		public Rectangle getRealBBox(){
@@ -610,8 +601,7 @@ import java.awt.Rectangle;
 
 		@Override
 		public int hashCode() {
-			int hash = x << 24 | y << 16 | width << 8 | height;
-			return hash;
+			return x << 24 | y << 16 | width << 8 | height;
 		}
 		
 		@Override
@@ -632,5 +622,99 @@ import java.awt.Rectangle;
 //			sb.append(" nodes and ratio ");
 //			sb.append(getAspectRatio());
 //			return sb.toString(); 		
+		}
+
+		/**
+		 * return minimum number of parts when tile is split with the given maximum.
+		 * 
+		 * @param maxNodes the maximum
+		 * @return minimum number of parts for the given maximum
+		 */
+		public int getMinParts(long maxNodes) {
+			long minCount = countInside();
+			int nMin = (int) (minCount / maxNodes);
+			if (nMin * maxNodes < minCount)
+				nMin++;
+			return nMin;
+		}
+		
+		public long countInside() {
+			long minCount = 0;
+			if (densityInfo.getPolygonArea() == null || densityInfo.allInsidePolygon())
+				return count;
+			for (int i = 0; i < width; i++) {
+				final int[] col = densityInfo.getMapCol(x + i);
+				if (col != null) {
+					for (int k = 0; k < height; k++) {
+						if (densityInfo.isGridElemInPolygon(x + i, y + k))
+							minCount += col[y + k];
+					}
+				}
+			}
+			return minCount;
+		}
+
+		public int countElemsOutside() {
+			if (densityInfo.getPolygonArea() == null || densityInfo.allInsidePolygon())
+				return 0;
+			int num = 0;
+			for (int i = 0; i < width; i++) {
+				for (int k = 0; k < height; k++) {
+					if (!densityInfo.isGridElemInPolygon(x + i, y + k))
+						num++;
+				}
+			}
+			return num;
+		}
+
+		public List<Tile> divide(long maxNodes) {
+			if (getCount() < maxNodes)
+				return Arrays.asList(this);
+			List<Tile> parts = new ArrayList<>(2);
+			TileMetaInfo smi = new TileMetaInfo(this, null, null);
+			boolean ok = false;
+			if (width > height) {
+				int start = findValidStartX(smi);
+				int end = findValidEndX(smi);
+				int mid = (start + end) / 2;
+				ok = splitHoriz(mid, smi);
+			} else {
+				int start = findValidStartY(smi);
+				int end = findValidEndY(smi);
+				int mid = (start + end) / 2;
+				ok = splitVert(mid, smi);
+			}
+			if (ok) {
+				for (Tile part : smi.getParts()) {
+					parts.addAll(part.divide(maxNodes));
+				}
+			} else {
+				parts.add(this);
+			}
+			return parts;
+		}
+		
+		public double getFillRatio() {
+			return (double)getCount() / (width * height);
+		} 
+		
+		/**
+		 * Find largest count in single grid element. Might be outside of the polygon.
+		 * @return largest count in single grid element
+		 */
+		int getLargestInfo() {
+			int largest = 0;
+			for (int i = 0; i < width; i++) {
+				final int[] col = densityInfo.getMapCol(x + i);
+				if (col != null) {
+					for (int k = 0; k < height; k++) {
+						int n = col[y+k];
+						if (n > largest) {
+							largest = n;
+						}
+					}
+				}
+			}
+			return largest;
 		}
 	}

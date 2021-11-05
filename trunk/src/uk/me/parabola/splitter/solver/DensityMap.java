@@ -42,7 +42,7 @@ import uk.me.parabola.splitter.Utils;
 public class DensityMap {
 	private static final int SEA_NODE_FACTOR = 2;
 	private final int width, height, shift;
-	private final int[][] nodeMap;
+	private int[][] nodeMap;
 	private Area bounds;
 	private long totalNodeCount;
 
@@ -52,7 +52,7 @@ public class DensityMap {
 	 * @param resolution the resolution of the density map. This must be a value between 1 and 24.
 	 */
 	public DensityMap(Area area, int resolution) {
-		assert resolution >=1 && resolution <= 24;
+		assert resolution >= 1 && resolution <= 24;
 		shift = 24 - resolution;
 
 		bounds = RoundingUtils.round(area, resolution);
@@ -69,7 +69,7 @@ public class DensityMap {
 		if (polygonArea == null)
 			return null;
 		java.awt.geom.Area simpleArea = new java.awt.geom.Area();
-		if (polygonArea.intersects(Utils.area2Rectangle(bounds, 0)) == false)
+		if (!polygonArea.intersects(Utils.area2Rectangle(bounds, 0)))
 			return simpleArea;
 		int gridElemWidth = bounds.getWidth() / width;
 		int gridElemHeight = bounds.getHeight() / height;
@@ -90,25 +90,24 @@ public class DensityMap {
 			int firstY = -1;
 			for (int y = 0; y < height; y++) {
 				int lat = yToLat(y);
-				if (y < minY || y > maxY 
-						|| polygonArea.intersects(lon, lat, gridElemWidth, gridElemHeight) == false){
-					if (firstY >= 0){
-						simpleArea.add(new java.awt.geom.Area(new Rectangle(x,firstY,1,y-firstY)));
-						firstY = -1; 
+				if (y < minY || y > maxY || !polygonArea.intersects(lon, lat, gridElemWidth, gridElemHeight)) {
+					if (firstY >= 0) {
+						simpleArea.add(new java.awt.geom.Area(new Rectangle(x, firstY, 1, y - firstY)));
+						firstY = -1;
 					}
 				} else {
 					if (firstY < 0)
-						firstY = y; 
+						firstY = y;
 				}
 			}
 			if (firstY >= 0){
-				simpleArea.add(new java.awt.geom.Area(new Rectangle(x,firstY,1,height-firstY)));
+				simpleArea.add(new java.awt.geom.Area(new Rectangle(x, firstY, 1, height - firstY)));
 			}
 		}
 		if (!simpleArea.isSingular()) {
 			List<List<Point>> shapes = Utils.areaToShapes(simpleArea);
 			if (shapes.removeIf(s -> !Utils.clockwise(s))) {
-				System.out.println("Warning: Rastered polaygon area contains holes, polygon is probably concave, trying to fix this");
+				System.out.println("Warning: Rastered polygon area contains holes, polygon is probably concave, trying to fix this");
 				simpleArea.reset();
 				shapes.forEach(s -> simpleArea.add(Utils.shapeToArea(s)));
 			}
@@ -157,21 +156,6 @@ public class DensityMap {
 		return nodeMap[x] != null ? nodeMap[x][y] : 0;
 	}
 
-	public int[][] getyxMap() {
-		int[][] yxMap = new int[height][];
-		for (int y = 0; y < height; y++) {
-			for (int x = 0; x < width; x++) {
-				int count = (nodeMap[x] == null) ? 0 : nodeMap[x][y];
-				if (count > 0) {
-					if (yxMap[y] == null)
-						yxMap[y] = new int[width];
-					yxMap[y][x] = count;
-				}
-			}
-		}
-		return yxMap;
-	}
-	
 	public DensityMap subset(final Area subsetBounds) {
 		int minLat = Math.max(bounds.getMinLat(), subsetBounds.getMinLat());
 		int minLon = Math.max(bounds.getMinLong(), subsetBounds.getMinLong());
@@ -244,7 +228,6 @@ public class DensityMap {
 				f.write(collectorBounds.getMinLat() + "," + collectorBounds.getMinLong() + "," + collectorBounds.getMaxLat() + "," + collectorBounds.getMaxLong() + '\n');
 			else 
 				f.write("no_bounds_in_input\n");
-			//f.write(bounds.getMinLat() + "," + bounds.getMinLong() + "," + bounds.getMaxLat() + "," + bounds.getMaxLong() + '\n');
 			for (int x=0; x<width; x++){
 				if (nodeMap[x] != null){
 					for (int y=0; y<height; y++){
@@ -282,9 +265,8 @@ public class DensityMap {
 			inLine = problemReader.readLine();
 			if (inLine != null){
 				items = csvSplitter.split(inLine);
-				if (items.length != 4){
-					System.out.println("Error: Invalid format in map file, line number " + problemReader.getLineNumber() + ": "   
-							+ inLine);
+				if (items.length != 4) {
+					reportErrorLine(problemReader.getLineNumber(), inLine);
 					return null;
 				}
 				details.addToBounds(Integer.parseInt(items[0]), Integer.parseInt(items[1]));
@@ -294,8 +276,7 @@ public class DensityMap {
 			if (inLine != null && !"no_bounds_in_input".equals(inLine)) {
 				items = csvSplitter.split(inLine);
 				if (items.length != 4) {
-					System.out.println("Error: Invalid format in map file, line number " + problemReader.getLineNumber()
-							+ ": " + inLine);
+					reportErrorLine(problemReader.getLineNumber(), inLine);
 					return null;
 				}
 				collectorBounds = new Area(Integer.parseInt(items[0]), Integer.parseInt(items[1]),
@@ -304,22 +285,20 @@ public class DensityMap {
 			while ((inLine = problemReader.readLine()) != null) {
 				items = csvSplitter.split(inLine);
 				if (items.length != 3) {
-					System.out.println("Error: Invalid format in map file, line number " + problemReader.getLineNumber() + ": "   
-							+ inLine);
+					reportErrorLine(problemReader.getLineNumber(), inLine);
 					return null;
 				}
 				int x,y,sum;
-				try{
+				try {
 					x = Integer.parseInt(items[0]);
 					y = Integer.parseInt(items[1]);
 					sum = Integer.parseInt(items[2]);
 				
-					if (x < 0 || x >= width || y < 0 || y>=height){
-						System.out.println("Error: Invalid data in map file, line number " + + problemReader.getLineNumber() + ": "   
-								+ inLine);
+					if (x < 0 || x >= width || y < 0 || y >= height) {
+						System.out.println("Error: Invalid data in map file, line number "
+								+ problemReader.getLineNumber() + ": " + inLine);
 
-					}
-					else{
+					} else {
 						if (nodeMap[x] == null)
 							nodeMap[x] = new int[height];
 						nodeMap[x][y] = sum;
@@ -339,6 +318,10 @@ public class DensityMap {
 		return collectorBounds;
 	}
 
+	private static void reportErrorLine(int lineNo, String inLine) {
+		System.out.println("Error: Invalid format in map file, line number " + lineNo + ": " + inLine);
+	}
+
 	public Area getArea(int x, int y, int width2, int height2) {
 		assert x >= 0;
 		assert y >= 0;
@@ -355,8 +338,7 @@ public class DensityMap {
 	 */
 	public void mergeSeaData(DensityMap seaData, Area area, boolean trim) {
 		if (this.shift != seaData.shift
-				|| Utils.area2Rectangle(bounds, 0).equals(
-						Utils.area2Rectangle(seaData.getBounds(), 0)) == false) {
+				|| !Utils.area2Rectangle(bounds, 0).equals(Utils.area2Rectangle(seaData.getBounds(), 0))) {
 			throw new SplitFailedException("cannot merge density maps");
 		}
 		if (trim && totalNodeCount == 0)
@@ -369,69 +351,47 @@ public class DensityMap {
 			maxX = width - 1;
 		if (maxY >= height)
 			maxY = height - 1;
-		if (trim){
-			for (int x = minX; x <= width; x++) {
-				if (nodeMap[x] != null){
-					minX = x;
-					break;
-				}
-			}
-			for (int x = maxX; x >= 0; x--) {
-				if (nodeMap[x] != null){
-					maxX = x;
-					break;
-				}
-			}
-			boolean done = false;
-			for (int y = minY; y < height; y++) {
-				for (int x = minX; x < width; x++) {
-					if (nodeMap[x] == null)
-						continue;
-					if (nodeMap[x][y] > 0){
-						minY = y;
-						done = true;
-						break;
-					}
-				}
-				if (done)
-					break;
-			}
-			done = false;
-			for (int y = maxY; y >= 0; y--) {
-				for (int x = minX; x < width; x++) {
-					if (nodeMap[x] == null)
-						continue;
-
-					if (nodeMap[x][y] > 0){
-						maxY = y;
-						done = true;
-						break;
-					}
-				}
-				if (done)
-					break;
-			}
+		if (trim) {
+			while (minX < width && nodeMap[minX] == null)
+				minX++;
+			while (maxX > 0 && nodeMap[maxX] == null)
+				maxX--;
+			while (minY < height && rowAllZero(minY, minX, maxX))
+				minY++;
+			while (maxY > 0 && rowAllZero(maxY, minX, maxX))
+				maxY--;
 		}
 		long addedSeaNodes = 0;
-		for (int x = minX; x <= maxX; x++){
+		for (int x = minX; x <= maxX; x++) {
 			int[] seaCol = seaData.nodeMap[x];
 			if (seaCol == null)
 				continue;
 			int[] col = nodeMap[x];
 			if (col == null)
-				col = new int[height+1];
-			for (int y = minY; y <= maxY; y++){
-				if (col[y] == 0){
+				col = new int[height + 1];
+			for (int y = minY; y <= maxY; y++) {
+				if (col[y] == 0) {
 					int seaCount = seaCol[y] * SEA_NODE_FACTOR;
-					if (seaCount > 0){
-						col[y] = seaCount;
-						totalNodeCount += seaCount;
-						addedSeaNodes += seaCount;
-					}
+					col[y] = seaCount;
+					totalNodeCount += seaCount;
+					addedSeaNodes += seaCount;
 				}
 			}
 		}
 		System.out.println("Added " + addedSeaNodes + " nodes from precompiled sea data.");
+	}
+
+	boolean rowAllZero(int row, int minX, int maxX) {
+		for (int x = minX; x <= maxX; x++) {
+			if (nodeMap[x] != null && nodeMap[x][row] > 0) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public void clear() {
+		nodeMap = null;
 	}
 }
 

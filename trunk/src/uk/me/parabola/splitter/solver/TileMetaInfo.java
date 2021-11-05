@@ -37,6 +37,7 @@ class TileMetaInfo {
 	private int horMidPos = -1;
 	private int validEndX = -1;
 	private int validEndY = -1;
+	private int numOutside = -1;
 	
 	/**
 	 * Copy information from parent tile to child. Reusing these values
@@ -63,8 +64,14 @@ class TileMetaInfo {
 				
 		} else 
 			Arrays.fill(colSums, -1);
-		if (smiParent != null)
+		if (smiParent != null) {
 			this.minNodes = smiParent.minNodes;
+			if (smiParent.getNumOutside() == 0)
+				numOutside = 0;
+		}
+		if (numOutside < 0) {
+			numOutside = tile.countElemsOutside();
+		}
 	}
 
 	/**
@@ -192,6 +199,14 @@ class TileMetaInfo {
 
 	public void setValidEndY(int pos) {
 		this.validEndY = pos;
+	}
+	
+	public int getNumOutside() {
+		return numOutside;
+	}
+
+	public void setNumOutside(int numOutside) {
+		this.numOutside = numOutside;
 	}
 	
 	/**
