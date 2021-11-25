@@ -20,6 +20,7 @@ import java.util.List;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import uk.me.parabola.splitter.Area;
+import uk.me.parabola.splitter.SplitFailedException;
 import uk.me.parabola.splitter.Utils;
 
 /**
@@ -672,6 +673,7 @@ import uk.me.parabola.splitter.Utils;
 				return Arrays.asList(this);
 			List<Tile> parts = new ArrayList<>(2);
 			TileMetaInfo smi = new TileMetaInfo(this, null, null);
+			smi.setMinNodes(1); // don't create tiles with 0 nodes
 			boolean ok = false;
 			if (width > height) {
 				int start = findValidStartX(smi);

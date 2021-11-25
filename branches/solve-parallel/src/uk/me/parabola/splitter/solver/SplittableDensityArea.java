@@ -563,7 +563,7 @@ public class SplittableDensityArea {
 		Solution res = new Solution(maxNodes);
 		long partSize = 64 * maxNodes;
 		if (depth > 0) {
-			partSize = startTile.getCount() - 1;
+			partSize = Math.max(1, startTile.getCount() - 1);
 		}
 		List<Tile> todo = startTile.divide(partSize);
 		System.out.println("Initial simple split returned " + todo.size() + " tile(s)");
