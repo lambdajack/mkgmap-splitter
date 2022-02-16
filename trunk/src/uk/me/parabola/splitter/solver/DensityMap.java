@@ -390,8 +390,5 @@ public class DensityMap {
 		return true;
 	}
 	
-	public void clear() {
-		nodeMap = null;
-	}
 }
 

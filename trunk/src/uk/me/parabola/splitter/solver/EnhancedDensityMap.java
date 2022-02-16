@@ -41,7 +41,6 @@ public class EnhancedDensityMap {
 		this.densityMap = densities;
 		this.polygonArea = polygonArea;
 		prepare();
-		densityMap.clear();
 	}
 
 	/**
