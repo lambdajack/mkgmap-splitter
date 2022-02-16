@@ -208,7 +208,6 @@ public class AreasCalculator {
 		DensityMap densityMap = pass1Collector.getDensityMap();
 		boolean trim = !mainOptions.isNoTrim();
 		SplittableDensityArea splittableArea = new SplittableDensityArea(densityMap.subset(roundedBounds), mainOptions.getSearchLimit(), trim);
-		pass1Collector.getDensityMap().clear();
 		if (splittableArea.hasData() == false) {
 			System.out.println("input file(s) have no data inside calculated bounding box");
 			return Collections.emptyList();
