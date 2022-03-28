@@ -169,20 +169,26 @@ public class SplittableDensityArea {
 			return getAreas(split(), null);
 		if (polygonArea.isSingular()) {
 			java.awt.geom.Area rasteredArea = allDensities.rasterPolygon(polygonArea);
-			if (rasteredArea.isEmpty()) {
-				System.err.println("Bounding polygon doesn't intersect with the bounding box of the input file(s)");
-				return Collections.emptyList();
-			}
-			if (rasteredArea.isSingular()) {
-				prepare(polygonArea);
-				Tile tile = new Tile(extraDensityInfo, rasteredArea.getBounds());
-				Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredArea);
-				if (solution == null && rasteredArea.isRectangular()) 
-					solution = split();
-				if (solution != null) { 
-					return getAreas(solution, polygonArea);
+			List<List<Point>> shapes = Utils.areaToShapes(rasteredArea);
+			List<Area> areas = new ArrayList<>();
+			for (List<Point> shape : shapes) {
+				java.awt.geom.Area rasteredPart = Utils.shapeToArea(shape);
+				if (rasteredPart.isEmpty()) {
+					System.err.println("Bounding polygon doesn't intersect with the bounding box of the input file(s)");
+					return Collections.emptyList();
+				}
+				if (rasteredPart.isSingular()) {
+					prepare(polygonArea);
+					Tile tile = new Tile(extraDensityInfo, rasteredPart.getBounds());
+					Solution solution = findSolutionWithSinglePolygon(0, tile, rasteredPart);
+					if (solution == null && rasteredPart.isRectangular()) 
+						solution = split();
+					if (solution != null) { 
+						areas.addAll(getAreas(solution, polygonArea));
+					}
 				}
 			}
+			return areas;
 		}
 		if (polygonArea.intersects(Utils.area2Rectangle(allDensities.getBounds(), 0)))
 			return splitPolygon(polygonArea);
