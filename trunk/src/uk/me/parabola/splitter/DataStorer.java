@@ -185,7 +185,7 @@ public class DataStorer {
 		List<Area> distinctAreas = distinctDataStorer.getAreaDictionary().getAreas();
 		Map<Area, Integer> map = new HashMap<>();
 		for (Area distinctArea : distinctAreas) {
-			if (distinctArea.getMapId() < 0 && !distinctArea.isPseudoArea()) {
+			if (!distinctArea.isPseudoArea()) {
 				AreaSet w = new AreaSet();
 				for (int i = 0; i < getNumOfAreas(); i++) {
 					if (this.areaDictionary.getArea(i).contains(distinctArea)) {
@@ -193,7 +193,7 @@ public class DataStorer {
 					}
 				}
 				map.put(distinctArea, this.areaDictionary.translate(w));
-			}
+			} 
 		}
 
 		for (Entry<Long, Integer> e : distinctDataStorer.oneDistinctAreaOnlyRels.entrySet()) {
@@ -202,7 +202,9 @@ public class DataStorer {
 			int pos = singleArea.iterator().next();
 			if (!distinctAreas.get(pos).isPseudoArea()) {
 				Integer areaIdx = map.get(distinctAreas.get(pos));
-				oneTileOnlyRels.put(e.getKey(), areaIdx != null ? areaIdx : e.getValue());
+				if (areaIdx == null)
+					throw new SplitFailedException("failed to find index for area " + distinctAreas.get(pos)); 
+				oneTileOnlyRels.put(e.getKey(), areaIdx);
 			} else {
 				oneTileOnlyRels.put(e.getKey(), AbstractMapProcessor.UNASSIGNED);
 			}
