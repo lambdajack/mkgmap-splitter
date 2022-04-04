@@ -1308,7 +1308,10 @@ public class SplittableDensityArea {
 					int nMin = (int) (minCount / myMaxNodes);
 					if (nMin * myMaxNodes < minCount)
 						nMin++;
-					long limit = minCount / nMin;
+					if (nMin == 0) {
+						nMin++;
+					}
+					long limit = nMin == 0? 1 : minCount / nMin;
 					double dMin = (double) minCount / myMaxNodes;
 					final int around;
 					if ((dMin > 1.8 && dMin < 2.0 && ratio > 0.125 && ratio < 8) || (dMin > 2.8 && dMin < 3.0)) {
